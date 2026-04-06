@@ -6,9 +6,13 @@ describe("fmiProviderStub", () => {
     expect(fmiProviderStub.supports(60.17, 24.94, new Date())).toBe(true);
   });
 
-  it("supports Oslo and Stockholm", () => {
-    expect(fmiProviderStub.supports(59.91, 10.75, new Date())).toBe(true);
-    expect(fmiProviderStub.supports(59.33, 18.07, new Date())).toBe(true);
+  it("supports other points inside Finland bbox", () => {
+    expect(fmiProviderStub.supports(61.5, 23.76, new Date())).toBe(true); // Tampere
+    expect(fmiProviderStub.supports(65.01, 25.47, new Date())).toBe(true); // Oulu
+  });
+
+  it("does not support Oslo (outside Finland stub bbox)", () => {
+    expect(fmiProviderStub.supports(59.91, 10.75, new Date())).toBe(false);
   });
 
   it("does not support Canary Islands", () => {

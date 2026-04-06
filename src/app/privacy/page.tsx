@@ -132,13 +132,13 @@ export default function PrivacyPage() {
                 the application and PostgreSQL.
               </li>
               <li>
-                <strong>Email delivery</strong> (e.g. Resend HTTP API or local SMTP/Mailpit) for magic
+                <strong>Email delivery</strong> (SMTP / transactional email provider) for magic
                 links.
               </li>
               <li>
                 <strong>Map &amp; weather providers</strong> when your browser loads tiles or when our
-                servers call forecast APIs (typically location coordinates without directly attaching
-                your name to those calls).
+                servers call forecast APIs such as Met.no, Yr.no, and Open-Meteo (typically location
+                coordinates without directly attaching your name to those calls).
               </li>
             </ul>
             <p>

@@ -3,6 +3,8 @@ export type RankedPracticeAreaWind = {
   gustMs: number | null;
   /** Meteorological: direction wind comes from, degrees */
   dirFromDeg: number | null;
+  /** Horizontal visibility (m) when the forecast API provides it. */
+  visibilityM: number | null;
   observedAt: string;
 };
 

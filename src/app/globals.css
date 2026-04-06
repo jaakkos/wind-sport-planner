@@ -31,3 +31,62 @@ body {
   color: var(--foreground);
   font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
 }
+
+/* MapHub: wind arrows as DOM/CSS (transform-friendly, no GeoJSON line/fill layers). */
+/* Tip points east (+X); rotate with cssRotateEastBaseToWindTo (same basis as optimal shaft). */
+.map-wind-field-arrow {
+  width: 0;
+  height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 14px solid rgb(29 78 216 / 0.72);
+  filter: drop-shadow(0 0 1px rgb(255 255 255 / 1))
+    drop-shadow(0 0 3px rgb(255 255 255 / 0.55));
+}
+
+.map-wind-optimal-arrow__shaft {
+  display: block;
+  height: 4px;
+  background: rgb(185 28 28 / 0.92);
+  border-radius: 1px 0 0 1px;
+  flex-shrink: 0;
+}
+
+.map-wind-optimal-arrow__head {
+  display: block;
+  width: 0;
+  height: 0;
+  border-top: 9px solid transparent;
+  border-bottom: 9px solid transparent;
+  border-left: 14px solid #dc2626;
+  flex-shrink: 0;
+  margin-left: -1px;
+}
+
+.map-wind-pick-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: #6d28d9;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgb(109 40 217 / 0.35);
+}
+
+.map-wind-pick-arrow__shaft {
+  display: block;
+  height: 4px;
+  background: rgb(124 58 237 / 0.95);
+  border-radius: 1px 0 0 1px;
+  flex-shrink: 0;
+}
+
+.map-wind-pick-arrow__head {
+  display: block;
+  width: 0;
+  height: 0;
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+  border-left: 13px solid #8b5cf6;
+  flex-shrink: 0;
+  margin-left: -1px;
+}

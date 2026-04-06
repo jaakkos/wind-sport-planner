@@ -1,10 +1,13 @@
-import type { WeatherProvider } from "@/lib/weather/types";
+import type { ForecastFetchOptions, WeatherProvider } from "@/lib/weather/types";
 import { fmiProviderStub } from "@/lib/weather/providers/fmi";
+import { metNoProvider } from "@/lib/weather/providers/metNo";
 import { openMeteoProvider } from "@/lib/weather/providers/openMeteo";
 
-const providers: WeatherProvider[] = [fmiProviderStub, openMeteoProvider].sort(
-  (a, b) => a.priority - b.priority,
-);
+const providers: WeatherProvider[] = [
+  fmiProviderStub,
+  metNoProvider,
+  openMeteoProvider,
+].sort((a, b) => a.priority - b.priority);
 
 export function providersForPoint(lat: number, lng: number, at: Date) {
   return providers.filter((p) => p.supports(lat, lng, at));
@@ -30,10 +33,11 @@ export async function fetchForecastWithRouter(
   lng: number,
   from: Date,
   to: Date,
+  options?: ForecastFetchOptions,
 ): Promise<{ providerId: string; hourly: import("@/lib/weather/types").NormalizedWind[]; raw: unknown } | null> {
   const chain = providersForPoint(lat, lng, from);
   for (const p of chain) {
-    const r = await p.fetchForecastSeries(lat, lng, from, to);
+    const r = await p.fetchForecastSeries(lat, lng, from, to, options);
     if (r?.hourly?.length) {
       return { providerId: p.id, hourly: r.hourly, raw: r.raw };
     }

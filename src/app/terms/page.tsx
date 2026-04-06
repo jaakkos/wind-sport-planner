@@ -97,8 +97,9 @@ export default function TermsPage() {
           <section className="space-y-2">
             <h2 className="text-lg font-semibold text-zinc-900">6. Weather &amp; map data</h2>
             <p>
-              Forecasts and map layers come from third parties (e.g. Open-Meteo, OpenStreetMap,
-              optional MapTiler). They are provided for information only. You are solely responsible
+              Forecasts and map layers come from third parties (e.g. Norwegian Meteorological Institute /
+              Met.no, Open-Meteo, OpenStreetMap, optional MapTiler). They are provided for information
+              only. You are solely responsible
               for decisions made in the field; the operator does not guarantee accuracy, availability,
               or fitness for any purpose.
             </p>

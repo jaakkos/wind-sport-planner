@@ -5,21 +5,18 @@ import Image from "next/image";
 import Link from "next/link";
 import { signOut, useSession } from "next-auth/react";
 import type { ReactNode } from "react";
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import MapGL, {
   Layer,
   MapRef,
+  Marker,
   NavigationControl,
   Source,
 } from "react-map-gl/maplibre";
+import bbox from "@turf/bbox";
+import booleanPointInPolygon from "@turf/boolean-point-in-polygon";
 import centroid from "@turf/centroid";
+import { point as turfPoint } from "@turf/helpers";
 import type { Feature, FeatureCollection, Polygon } from "geojson";
 import {
   type BasemapId,
@@ -27,8 +24,36 @@ import {
   maptilerOutdoorStyleUrl,
 } from "@/lib/map/styles";
 import type { RankedPracticeArea } from "@/lib/heuristics/rankAreaTypes";
+import { formatVisibilityM } from "@/lib/weather/formatVisibility";
+import { yrNoDailyTableUrlEn, yrNoHourlyTableUrlEn } from "@/lib/yrNoUrls";
+import {
+  cssRotateEastBaseToWindTo,
+  windToDegFromDirFrom,
+} from "@/lib/map/windArrowDisplay";
 import { clampArrowLengthInsidePolygon } from "@/lib/map/windArrowLength";
-import { destinationLngLat, sectorsFromCenter } from "@/lib/heuristics/windDirection";
+import { sectorsFromCenter } from "@/lib/heuristics/windDirection";
+
+/** Inline glyph: opens in new tab (paired with Yr favicon on external forecast links). */
+function ExternalTabIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      width={12}
+      height={12}
+      aria-hidden
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+      <polyline points="15 3 21 3 21 9" />
+      <line x1="10" y1="14" x2="21" y2="3" />
+    </svg>
+  );
+}
 
 type Bundle = {
   activeSport: string;
@@ -168,6 +193,21 @@ function cardinalFromDeg(deg: number | null): string {
   return WIND_FROM_OPTIONS[idx]!.label;
 }
 
+/** Map / list: `4 (7) m/s ENE (66°)` — whole m/s, gust in parentheses (less “too exact” than decimals). */
+function windCompactSummary(w: {
+  speedMs: number | null;
+  gustMs: number | null;
+  dirFromDeg: number | null;
+}): string {
+  const sp = w.speedMs != null ? Math.round(w.speedMs) : null;
+  const gu = w.gustMs != null ? Math.round(w.gustMs) : null;
+  const fromC = cardinalFromDeg(w.dirFromDeg);
+  const deg = w.dirFromDeg != null ? Math.round(w.dirFromDeg) : null;
+  const windPart =
+    sp != null ? (gu != null ? `${sp} (${gu}) m/s` : `${sp} m/s`) : "— m/s";
+  return deg != null ? `${windPart} ${fromC} (${deg}°)` : `${windPart} ${fromC}`;
+}
+
 /** Great-circle distance in km (for wind-arrow preview length). */
 function haversineKm(lng1: number, lat1: number, lng2: number, lat2: number): number {
   const R = 6371;
@@ -208,6 +248,21 @@ function windToFromWindFrom(windFromDeg: number): number {
   return (windFromDeg + 180) % 360;
 }
 
+/** Web Mercator meters per pixel at latitude (MapLibre 512 px world width). */
+function metersPerPixelAtLatitude(latDeg: number, zoom: number): number {
+  const cosLat = Math.cos((latDeg * Math.PI) / 180);
+  return (40075016.686 * Math.max(cosLat, 0.02)) / (512 * Math.pow(2, zoom));
+}
+
+function kmToScreenPx(km: number, latDeg: number, zoom: number): number {
+  return (km * 1000) / metersPerPixelAtLatitude(latDeg, zoom);
+}
+
+function windFieldArrowScale(zoom: number): number {
+  const z = Math.max(1, Math.min(19, zoom));
+  return Math.min(2.35, Math.max(0.62, 0.58 * Math.pow(1.14, z - 9.5)));
+}
+
 const FORECAST_SLIDER_MAX_H = 120;
 
 type ToolSectionKey =
@@ -243,24 +298,6 @@ const DEFAULT_TOOL_SECTIONS: Record<ToolSectionKey, boolean> = {
 type SidebarTab = "plan" | "map" | "you";
 
 const SIDEBAR_TAB_STORAGE = "fjelllift-sidebar-tab";
-
-/**
- * Tailwind `md` — desktop keeps the floating tools card; mobile uses a map-first sheet.
- * MapHub is loaded with `dynamic(..., { ssr: false })` from the map route, so the initializer
- * may read `window` on first paint; `false` is the safe fallback if this component is ever SSR’d.
- */
-function useMdUp(): boolean {
-  const [matches, setMatches] = useState(() =>
-    typeof window !== "undefined" ? window.matchMedia("(min-width: 768px)").matches : false,
-  );
-  useLayoutEffect(() => {
-    const mq = window.matchMedia("(min-width: 768px)");
-    const onChange = () => setMatches(mq.matches);
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, []);
-  return matches;
-}
 
 function toolKeysForTab(tab: SidebarTab): ToolSectionKey[] {
   switch (tab) {
@@ -322,54 +359,46 @@ function CollapsibleSection({
   );
 }
 
-/**
- * Shaft + triangular head toward `windToDeg` (bearing ° from north, clockwise).
- * `lenKm` is total length from start to tip; geometry scales down for short arrows.
- */
-function windArrowFeatures(
-  startLng: number,
-  startLat: number,
-  windToDeg: number,
-  lenKm: number,
-): Feature[] {
-  const L = Math.max(lenKm, 0.025);
-  const shaftLen = L * 0.52;
-  const neck = destinationLngLat(startLng, startLat, windToDeg, shaftLen);
-  const tip = destinationLngLat(startLng, startLat, windToDeg, L);
-  const headHalfWidth = Math.min((L - shaftLen) * 0.6, L * 0.24, 0.5);
-  const left = destinationLngLat(neck[0], neck[1], windToDeg + 90, headHalfWidth);
-  const right = destinationLngLat(neck[0], neck[1], windToDeg - 90, headHalfWidth);
+/** ~Max sample points per practice polygon (CSS markers; cap total for DOM cost). */
+const WIND_FIELD_MAX_ARROWS = 72;
+const MAX_TOTAL_WIND_FIELD_MARKERS = 560;
 
-  const shaft: Feature = {
+function sampleWindFieldOrigins(
+  poly: GeoJSON.Polygon,
+  centroidLng: number,
+  centroidLat: number,
+  maxPoints: number,
+): [number, number][] {
+  const [minLng, minLat, maxLng, maxLat] = bbox({
     type: "Feature",
-    properties: { wPart: "shaft" },
-    geometry: {
-      type: "LineString",
-      coordinates: [
-        [startLng, startLat],
-        [neck[0], neck[1]],
-      ],
-    },
-  };
-
-  const t: [number, number] = [tip[0], tip[1]];
-  const head: Feature = {
-    type: "Feature",
-    properties: { wPart: "head" },
-    geometry: {
-      type: "Polygon",
-      coordinates: [
-        [
-          t,
-          [left[0], left[1]],
-          [right[0], right[1]],
-          t,
-        ],
-      ],
-    },
-  };
-
-  return [shaft, head];
+    geometry: poly,
+    properties: {},
+  } as Feature<Polygon>);
+  const w = Math.max(maxLng - minLng, 1e-6);
+  const h = Math.max(maxLat - minLat, 1e-6);
+  // Finer grid, then subsample so arrows spread across the polygon instead of filling from one corner.
+  const gridN = Math.min(32, Math.max(10, Math.ceil(Math.sqrt(maxPoints * 3.2))));
+  const stepLng = w / gridN;
+  const stepLat = h / gridN;
+  const candidates: [number, number][] = [];
+  for (let i = 0; i <= gridN; i++) {
+    const la = minLat + i * stepLat;
+    for (let j = 0; j <= gridN; j++) {
+      const lo = minLng + j * stepLng;
+      if (booleanPointInPolygon(turfPoint([lo, la]), poly)) {
+        candidates.push([lo, la]);
+      }
+    }
+  }
+  if (candidates.length === 0) return [[centroidLng, centroidLat]];
+  if (candidates.length <= maxPoints) return candidates;
+  const out: [number, number][] = [];
+  const denom = Math.max(1, maxPoints - 1);
+  for (let k = 0; k < maxPoints; k++) {
+    const idx = Math.round((k / denom) * (candidates.length - 1));
+    out.push(candidates[idx]!);
+  }
+  return out;
 }
 
 export function MapHub() {
@@ -388,6 +417,7 @@ export function MapHub() {
   }, [sessionPending, isAuthed]);
 
   const mapRef = useRef<MapRef>(null);
+  const [mapZoom, setMapZoom] = useState(5);
   const [basemap, setBasemap] = useState<BasemapId>("hybrid");
   const [reliefOpacity, setReliefOpacity] = useState(0.42);
   const [activeSport, setActiveSport] = useState<"kiteski" | "kitesurf">("kiteski");
@@ -425,25 +455,12 @@ export function MapHub() {
     useState<Record<ToolSectionKey, boolean>>(DEFAULT_TOOL_SECTIONS);
 
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>("plan");
-  const isMdUp = useMdUp();
-  const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
-
-  useEffect(() => {
-    if (isMdUp) setMobileToolsOpen(false);
-  }, [isMdUp]);
 
   /** Avoid SSR/client mismatch for `datetime-local` default and similar. */
   const [clientReady, setClientReady] = useState(false);
   useEffect(() => {
     setClientReady(true);
   }, []);
-
-  useEffect(() => {
-    if (isMdUp) return;
-    if (mapMode === "draw" || mapMode === "pickWind") {
-      setMobileToolsOpen(true);
-    }
-  }, [mapMode, isMdUp]);
 
   useEffect(() => {
     try {
@@ -690,8 +707,10 @@ export function MapHub() {
     return features.length ? { type: "FeatureCollection", features } : null;
   }, [bundle]);
 
-  const windArrows = useMemo((): FeatureCollection => {
-    const features: Feature[] = [];
+  const fieldArrowScale = useMemo(() => windFieldArrowScale(mapZoom), [mapZoom]);
+
+  const windFieldMarkers = useMemo((): { id: string; lng: number; lat: number; windToDeg: number }[] => {
+    const out: { id: string; lng: number; lat: number; windToDeg: number }[] = [];
     const polyById = new Map<string, GeoJSON.Polygon>();
     if (bundle?.practiceAreas?.features.length) {
       for (const f of bundle.practiceAreas.features) {
@@ -699,23 +718,27 @@ export function MapHub() {
         polyById.set(areaFeatureId(f), f.geometry);
       }
     }
-    for (const r of ranked) {
+    outer: for (const r of ranked) {
       const w = r.wind;
       if (w?.dirFromDeg == null || Number.isNaN(w.dirFromDeg)) continue;
       const { lng, lat } = r.centroid;
-      const windToDeg = ((w.dirFromDeg + 180) % 360 + 360) % 360;
-      const spd = w.speedMs;
-      const preferredKm =
-        spd != null && spd > 0
-          ? Math.min(6, Math.max(0.35, spd * 0.18))
-          : 0.6;
+      const windToDeg = windToDegFromDirFrom(w.dirFromDeg);
       const poly = polyById.get(r.areaId);
-      const lenKm = poly
-        ? clampArrowLengthInsidePolygon(poly, lng, lat, windToDeg, preferredKm)
-        : Math.min(preferredKm, 2);
-      features.push(...windArrowFeatures(lng, lat, windToDeg, lenKm));
+      const origins = poly
+        ? sampleWindFieldOrigins(poly, lng, lat, WIND_FIELD_MAX_ARROWS)
+        : [[lng, lat]];
+      let i = 0;
+      for (const [sx, sy] of origins) {
+        if (out.length >= MAX_TOTAL_WIND_FIELD_MARKERS) break outer;
+        out.push({
+          id: `wf-${r.areaId}-${i++}`,
+          lng: sx,
+          lat: sy,
+          windToDeg,
+        });
+      }
     }
-    return { type: "FeatureCollection", features };
+    return out;
   }, [ranked, bundle]);
 
   const windLabels = useMemo((): FeatureCollection => {
@@ -723,23 +746,41 @@ export function MapHub() {
     for (const r of ranked) {
       const w = r.wind;
       const { lng, lat } = r.centroid;
-      const speedStr = w?.speedMs != null ? `${w.speedMs.toFixed(1)} m/s` : "—";
-      const gustStr = w?.gustMs != null ? `gust ${w.gustMs.toFixed(1)}` : "";
-      const fromC = cardinalFromDeg(w?.dirFromDeg ?? null);
-      const degStr = w?.dirFromDeg != null ? `${Math.round(w.dirFromDeg)}°` : "—";
-      const line1 = gustStr ? `${speedStr} · ${gustStr}` : speedStr;
-      const line2 = `from ${fromC} (${degStr})`;
+      const line1 = w ? windCompactSummary(w) : "—";
+      const visStr = formatVisibilityM(w?.visibilityM ?? null);
+      const line2 = visStr !== "—" ? `vis ${visStr}` : "";
       features.push({
         type: "Feature",
-        properties: { windText: `${line1}\n${line2}` },
+        properties: {
+          windText: [line1, line2].filter(Boolean).join("\n"),
+        },
         geometry: { type: "Point", coordinates: [lng, lat] },
       });
     }
     return { type: "FeatureCollection", features };
   }, [ranked]);
 
-  /** Downwind preview arrow at selected area centroid when that area has a saved optimal. */
-  const selectedAreaOptimalRay = useMemo((): FeatureCollection | null => {
+  /** Centroid markers: click opens Yr.no hourly (point) forecast for that coordinate. */
+  const yrForecastPoints = useMemo((): FeatureCollection => {
+    const features: Feature[] = [];
+    for (const r of ranked) {
+      const { lng, lat } = r.centroid;
+      features.push({
+        type: "Feature",
+        properties: { areaId: r.areaId },
+        geometry: { type: "Point", coordinates: [lng, lat] },
+      });
+    }
+    return { type: "FeatureCollection", features };
+  }, [ranked]);
+
+  /** Downwind preview at selected area centroid when that area has a saved optimal (CSS marker). */
+  const selectedOptimalWindMarker = useMemo((): {
+    lng: number;
+    lat: number;
+    windToDeg: number;
+    lenKm: number;
+  } | null => {
     if (!bundle?.practiceAreas?.features.length || !selectedPracticeAreaId) return null;
     const f = bundle.practiceAreas.features.find(
       (x) => areaFeatureId(x) === selectedPracticeAreaId,
@@ -754,10 +795,7 @@ export function MapHub() {
       const poly = f.geometry;
       const windTo = windToFromWindFrom(opt);
       const lenKm = clampArrowLengthInsidePolygon(poly, lng, lat, windTo, 14);
-      return {
-        type: "FeatureCollection",
-        features: windArrowFeatures(lng, lat, windTo, lenKm),
-      };
+      return { lng, lat, windToDeg: windTo, lenKm };
     } catch {
       return null;
     }
@@ -817,32 +855,39 @@ export function MapHub() {
     setMapMode("browse");
   }, []);
 
-  const windPickPreview = useMemo((): FeatureCollection | null => {
+  const windPickPreview = useMemo(():
+    | { kind: "dot"; lng: number; lat: number }
+    | { kind: "arrow"; tailLng: number; tailLat: number; windToDeg: number; distKm: number }
+    | null => {
     if (mapMode !== "pickWind" || windPickStart == null) return null;
     const [sx, sy] = windPickStart;
     const hx = windPickHover?.[0] ?? sx;
     const hy = windPickHover?.[1] ?? sy;
     const distKm = haversineKm(sx, sy, hx, hy);
-    if (distKm < 0.004) {
-      return {
-        type: "FeatureCollection",
-        features: [
-          {
-            type: "Feature",
-            properties: { wPick: "dot" },
-            geometry: { type: "Point", coordinates: [sx, sy] },
-          },
-        ],
-      };
-    }
+    if (distKm < 0.004) return { kind: "dot", lng: sx, lat: sy };
     const windTo = bearingDeg(sx, sy, hx, hy);
-    const L = Math.min(8, Math.max(0.06, distKm));
-    const arrow = windArrowFeatures(sx, sy, windTo, L).map((f) => ({
-      ...f,
-      properties: { ...f.properties, wPick: "arrow" },
-    }));
-    return { type: "FeatureCollection", features: arrow };
+    return { kind: "arrow", tailLng: sx, tailLat: sy, windToDeg: windTo, distKm };
   }, [mapMode, windPickStart, windPickHover]);
+
+  const optimalWindLenPx = useMemo(() => {
+    if (!selectedOptimalWindMarker) return 0;
+    const px = kmToScreenPx(
+      selectedOptimalWindMarker.lenKm,
+      selectedOptimalWindMarker.lat,
+      mapZoom,
+    );
+    return Math.min(160, Math.max(28, px));
+  }, [selectedOptimalWindMarker, mapZoom]);
+
+  const windPickArrowLenPx = useMemo(() => {
+    if (!windPickPreview || windPickPreview.kind !== "arrow") return 0;
+    const px = kmToScreenPx(
+      windPickPreview.distKm,
+      windPickPreview.tailLat,
+      mapZoom,
+    );
+    return Math.min(420, Math.max(12, px));
+  }, [windPickPreview, mapZoom]);
 
   const drawPreview = useMemo((): FeatureCollection | null => {
     if (drawRing.length === 0) return null;
@@ -982,38 +1027,9 @@ export function MapHub() {
     return `${ranked.length} area(s) · ${rel}${scoringHint}`;
   }, [hoursAhead, ranked.length, sessionPending, isAuthed, rankingForm]);
 
-  const toolsPanelOpen = isMdUp || mobileToolsOpen;
-
   return (
-    <div className="relative h-dvh min-h-dvh w-full overflow-hidden">
-      {!isMdUp && !mobileToolsOpen ? (
-        <button
-          type="button"
-          className="fixed left-3 top-3 z-20 flex min-h-11 items-center rounded-2xl border border-teal-900/15 bg-white/95 px-4 text-sm font-semibold text-teal-900 shadow-lg shadow-teal-900/10 backdrop-blur-md"
-          onClick={() => setMobileToolsOpen(true)}
-          aria-expanded={false}
-          aria-controls="map-tools-panel"
-        >
-          Tools
-        </button>
-      ) : null}
-      {!isMdUp && mobileToolsOpen ? (
-        <button
-          type="button"
-          className="fixed inset-0 z-10 bg-zinc-900/40"
-          aria-label="Close tools"
-          onClick={() => setMobileToolsOpen(false)}
-        />
-      ) : null}
-      {toolsPanelOpen ? (
-        <div
-          id="map-tools-panel"
-          className={`flex min-h-0 w-[min(24rem,calc(100vw-1rem))] max-w-[min(24rem,calc(100vw-1rem))] flex-col text-sm ${
-            isMdUp
-              ? "absolute left-2 top-2 z-10 max-h-[92dvh]"
-              : "fixed left-2 top-2 z-20 max-h-[calc(100dvh-1rem)] overflow-hidden shadow-2xl"
-          }`}
-        >
+    <div className="relative h-screen w-full">
+      <div className="absolute left-2 top-2 z-10 flex max-w-[min(24rem,calc(100vw-1rem))] max-h-[92vh] min-h-0 flex-col text-sm">
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-teal-900/10 bg-white/90 shadow-xl shadow-teal-900/[0.07] backdrop-blur-md">
           <div className="shrink-0 border-b border-teal-900/10 bg-gradient-to-br from-teal-50/90 via-white to-sky-50/35">
             <Link
@@ -1060,17 +1076,6 @@ export function MapHub() {
                 </button>
               ))}
             </div>
-            {!isMdUp ? (
-              <div className="mx-2.5 mb-2">
-                <button
-                  type="button"
-                  className="w-full min-h-11 rounded-xl border border-teal-700/25 bg-teal-700 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-800"
-                  onClick={() => setMobileToolsOpen(false)}
-                >
-                  Done — show map
-                </button>
-              </div>
-            ) : null}
             <div className="mx-2.5 mb-2.5 flex flex-wrap items-center justify-end gap-1">
               <button
                 type="button"
@@ -1166,8 +1171,14 @@ export function MapHub() {
               </button>
             </div>
             <p className="text-[10px] leading-snug text-zinc-500">
-              Slider moves the forecast hour (Open-Meteo). Blue arrows point{" "}
-              <strong>downwind</strong>; labels use wind <strong>from</strong> (meteorology).
+              Slider moves the forecast hour (Met.no / Yr in Europe with terrain elevation, otherwise
+              Open-Meteo). Many small <strong>downwind</strong> arrows (semi-transparent grid inside each
+              area).{" "}
+              Labels: wind <strong>from</strong> (meteorology), whole m/s with gust in parentheses.{" "}
+              <strong>Sky dot</strong> at each area centre opens Yr.no <strong>hourly</strong> forecast (new
+              tab) for that point; <strong>Shift+click</strong> elsewhere does the same. <strong>Vis</strong> when
+              shown
+              is modelled visibility — not used in score.
             </p>
           </label>
           {ranked.length > 0 ? (
@@ -1176,7 +1187,9 @@ export function MapHub() {
                 Areas (best score first) — tap to fly the map here
               </p>
               <ul className="max-h-52 space-y-0 overflow-auto rounded-xl bg-teal-50/20 text-[11px] leading-snug text-zinc-700 ring-1 ring-teal-900/5">
-                {ranked.map((r, idx) => (
+                {ranked.map((r, idx) => {
+                  const visLabel = r.wind ? formatVisibilityM(r.wind.visibilityM) : "—";
+                  return (
                   <li key={r.areaId} className="border-b border-teal-900/[0.06] last:border-0">
                     <button
                       type="button"
@@ -1197,11 +1210,13 @@ export function MapHub() {
                             {r.wind ? (
                               <>
                                 {" · "}
-                                {r.wind.speedMs != null ? `${r.wind.speedMs.toFixed(1)} m/s` : "—"}
-                                {r.wind.gustMs != null ? ` (g ${r.wind.gustMs.toFixed(1)})` : ""}
-                                {" from "}
-                                {cardinalFromDeg(r.wind.dirFromDeg)}
-                                {r.wind.dirFromDeg != null ? ` ${Math.round(r.wind.dirFromDeg)}°` : ""}
+                                {windCompactSummary(r.wind)}
+                                {visLabel !== "—" ? (
+                                  <>
+                                    {" · vis "}
+                                    {visLabel}
+                                  </>
+                                ) : null}
                               </>
                             ) : (
                               <span className="text-zinc-400"> · no forecast</span>
@@ -1211,7 +1226,8 @@ export function MapHub() {
                       </span>
                     </button>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             </div>
           ) : (
@@ -1880,7 +1896,6 @@ export function MapHub() {
           </nav>
         </div>
       </div>
-      ) : null}
 
       {terrainClick && (
         <div className="absolute bottom-2 left-2 z-10 max-w-xs rounded-2xl border border-teal-900/10 bg-white/95 p-3 text-xs shadow-lg shadow-teal-900/10 backdrop-blur-sm">
@@ -1908,15 +1923,54 @@ export function MapHub() {
               AMSL
             </p>
           )}
+          <div className="mt-2 flex flex-col gap-1.5">
+            <a
+              href={yrNoHourlyTableUrlEn(terrainClick.lat, terrainClick.lng)}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Opens yr.no in a new tab"
+              aria-label="Open Yr.no hourly forecast in a new tab"
+              className="flex items-center justify-center gap-2 rounded-lg bg-sky-600 px-2.5 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-sky-700"
+            >
+              <img
+                src="/yr-external.ico"
+                alt=""
+                width={18}
+                height={18}
+                decoding="async"
+                className="h-[18px] w-[18px] shrink-0 rounded-[4px] bg-white/10 ring-1 ring-white/25"
+              />
+              <span className="min-w-0 text-center leading-tight">Hourly forecast (point)</span>
+              <ExternalTabIcon className="h-3 w-3 shrink-0 opacity-90" />
+            </a>
+            <a
+              href={yrNoDailyTableUrlEn(terrainClick.lat, terrainClick.lng)}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Opens yr.no in a new tab"
+              aria-label="Open Yr.no long-term table in a new tab"
+              className="flex items-center justify-center gap-2 text-center text-[10px] font-medium text-sky-800 underline-offset-2 hover:underline"
+            >
+              <img
+                src="/yr-external.ico"
+                alt=""
+                width={16}
+                height={16}
+                decoding="async"
+                className="h-4 w-4 shrink-0 rounded-[3px] ring-1 ring-sky-900/15"
+              />
+              <span>Long-term table</span>
+              <ExternalTabIcon className="h-3 w-3 shrink-0 text-sky-700 opacity-90" />
+            </a>
+          </div>
         </div>
       )}
 
-      <div className="absolute inset-0 z-0 min-h-0 [&_.maplibregl-canvas]:outline-none">
-        <MapGL
+      <MapGL
         ref={mapRef}
         initialViewState={{
-          longitude: 16,
-          latitude: 64,
+          longitude: 25,
+          latitude: 65,
           zoom: 5,
         }}
         mapStyle={mapStyle}
@@ -1927,7 +1981,18 @@ export function MapHub() {
         }}
         maxZoom={19}
         minZoom={1}
-        interactiveLayerIds={mapMode === "browse" ? ["areas-fill"] : []}
+        interactiveLayerIds={
+          mapMode === "browse"
+            ? ["yr-forecast-point", "yr-forecast-point-halo", "areas-fill"]
+            : []
+        }
+        onLoad={() => {
+          const z = mapRef.current?.getMap().getZoom();
+          if (typeof z === "number" && Number.isFinite(z)) setMapZoom(z);
+        }}
+        onMove={(e) => {
+          setMapZoom(e.viewState.zoom);
+        }}
         onMouseMove={(e) => {
           if (mapMode !== "pickWind" || windPickStart == null) return;
           const { lng, lat } = e.lngLat;
@@ -1998,13 +2063,31 @@ export function MapHub() {
             return;
           }
           const hits = e.features ?? [];
+          const yrHit = hits.find(
+            (h) =>
+              h.layer?.id === "yr-forecast-point" ||
+              h.layer?.id === "yr-forecast-point-halo",
+          );
+          if (yrHit?.geometry?.type === "Point") {
+            const c = yrHit.geometry.coordinates;
+            const lng = c[0]!;
+            const lat = c[1]!;
+            window.open(yrNoHourlyTableUrlEn(lat, lng), "_blank", "noopener,noreferrer");
+            return;
+          }
           const areaHit = hits.find((h) => h.layer?.id === "areas-fill");
           if (
+            !e.originalEvent.shiftKey &&
             areaHit?.properties &&
             typeof (areaHit.properties as { id?: string }).id === "string"
           ) {
             setSelectedPracticeAreaId(String((areaHit.properties as { id: string }).id));
             setTerrainClick(null);
+            return;
+          }
+          if (e.originalEvent.shiftKey) {
+            const { lng, lat } = e.lngLat;
+            window.open(yrNoHourlyTableUrlEn(lat, lng), "_blank", "noopener,noreferrer");
             return;
           }
           const { lng, lat } = e.lngLat;
@@ -2041,74 +2124,89 @@ export function MapHub() {
         }}
       >
         <NavigationControl position="bottom-right" showCompass visualizePitch />
-        {selectedAreaOptimalRay?.features.length ? (
-          <Source id="wind-ray" type="geojson" data={selectedAreaOptimalRay}>
-            <Layer
-              id="wind-ray-shaft"
-              type="line"
-              filter={["==", ["get", "wPart"], "shaft"]}
-              layout={{ "line-cap": "round", "line-join": "round" }}
-              paint={{
-                "line-color": "#b91c1c",
-                "line-width": 4,
-                "line-opacity": 0.9,
+        {windFieldMarkers.map((m) => (
+          <Marker
+            key={m.id}
+            longitude={m.lng}
+            latitude={m.lat}
+            anchor="center"
+            rotationAlignment="map"
+            pitchAlignment="map"
+            style={{ pointerEvents: "none" }}
+          >
+            <div
+              style={{
+                transform: `rotate(${cssRotateEastBaseToWindTo(m.windToDeg)}deg) scale(${fieldArrowScale})`,
+                transformOrigin: "center center",
               }}
-            />
-            <Layer
-              id="wind-ray-head"
-              type="fill"
-              filter={["==", ["get", "wPart"], "head"]}
-              paint={{
-                "fill-color": "#dc2626",
-                "fill-opacity": 0.92,
-                "fill-outline-color": "#7f1d1d",
+            >
+              <div className="map-wind-field-arrow" />
+            </div>
+          </Marker>
+        ))}
+        {selectedOptimalWindMarker && optimalWindLenPx > 0 ? (
+          <Marker
+            longitude={selectedOptimalWindMarker.lng}
+            latitude={selectedOptimalWindMarker.lat}
+            anchor="left"
+            rotationAlignment="map"
+            pitchAlignment="map"
+            style={{ pointerEvents: "none" }}
+          >
+            <div
+              style={{
+                display: "inline-flex",
+                flexDirection: "row",
+                alignItems: "center",
+                transform: `rotate(${cssRotateEastBaseToWindTo(selectedOptimalWindMarker.windToDeg)}deg)`,
+                transformOrigin: "left center",
               }}
-            />
-          </Source>
+            >
+              <span
+                className="map-wind-optimal-arrow__shaft"
+                style={{ width: Math.max(6, optimalWindLenPx - 14) }}
+              />
+              <span className="map-wind-optimal-arrow__head" aria-hidden />
+            </div>
+          </Marker>
         ) : null}
-        {windPickPreview?.features.length ? (
-          <Source id="wind-pick" type="geojson" data={windPickPreview}>
-            <Layer
-              id="wind-pick-dot"
-              type="circle"
-              filter={["==", ["get", "wPick"], "dot"]}
-              paint={{
-                "circle-radius": 7,
-                "circle-color": "#6d28d9",
-                "circle-stroke-width": 2,
-                "circle-stroke-color": "#ffffff",
+        {windPickPreview?.kind === "dot" ? (
+          <Marker
+            longitude={windPickPreview.lng}
+            latitude={windPickPreview.lat}
+            anchor="center"
+            rotationAlignment="map"
+            pitchAlignment="map"
+            style={{ pointerEvents: "none" }}
+          >
+            <div className="map-wind-pick-dot" />
+          </Marker>
+        ) : null}
+        {windPickPreview?.kind === "arrow" && windPickArrowLenPx > 0 ? (
+          <Marker
+            longitude={windPickPreview.tailLng}
+            latitude={windPickPreview.tailLat}
+            anchor="left"
+            rotationAlignment="map"
+            pitchAlignment="map"
+            style={{ pointerEvents: "none" }}
+          >
+            <div
+              style={{
+                display: "inline-flex",
+                flexDirection: "row",
+                alignItems: "center",
+                transform: `rotate(${cssRotateEastBaseToWindTo(windPickPreview.windToDeg)}deg)`,
+                transformOrigin: "left center",
               }}
-            />
-            <Layer
-              id="wind-pick-shaft"
-              type="line"
-              filter={[
-                "all",
-                ["==", ["get", "wPick"], "arrow"],
-                ["==", ["get", "wPart"], "shaft"],
-              ]}
-              layout={{ "line-cap": "round", "line-join": "round" }}
-              paint={{
-                "line-color": "#7c3aed",
-                "line-width": 4,
-                "line-opacity": 0.95,
-              }}
-            />
-            <Layer
-              id="wind-pick-head"
-              type="fill"
-              filter={[
-                "all",
-                ["==", ["get", "wPick"], "arrow"],
-                ["==", ["get", "wPart"], "head"],
-              ]}
-              paint={{
-                "fill-color": "#8b5cf6",
-                "fill-opacity": 0.92,
-                "fill-outline-color": "#5b21b6",
-              }}
-            />
-          </Source>
+            >
+              <span
+                className="map-wind-pick-arrow__shaft"
+                style={{ width: Math.max(4, windPickArrowLenPx - 12) }}
+              />
+              <span className="map-wind-pick-arrow__head" aria-hidden />
+            </div>
+          </Marker>
         ) : null}
         {drawPreview?.features.length ? (
           <Source id="draw-preview" type="geojson" data={drawPreview}>
@@ -2202,43 +2300,6 @@ export function MapHub() {
             />
           </Source>
         ) : null}
-        {windArrows.features.length > 0 ? (
-          <Source id="wind-arrows" type="geojson" data={windArrows}>
-            <Layer
-              id="wind-arrow-shaft"
-              type="line"
-              filter={["==", ["get", "wPart"], "shaft"]}
-              layout={{ "line-cap": "round", "line-join": "round" }}
-              paint={{
-                "line-color": "#1e40af",
-                "line-width": [
-                  "interpolate",
-                  ["linear"],
-                  ["zoom"],
-                  6,
-                  1.5,
-                  10,
-                  2.5,
-                  14,
-                  3.5,
-                  18,
-                  4.25,
-                ],
-                "line-opacity": 0.95,
-              }}
-            />
-            <Layer
-              id="wind-arrow-head"
-              type="fill"
-              filter={["==", ["get", "wPart"], "head"]}
-              paint={{
-                "fill-color": "#2563eb",
-                "fill-opacity": 0.95,
-                "fill-outline-color": "#1e3a8a",
-              }}
-            />
-          </Source>
-        ) : null}
         {windLabels.features.length > 0 ? (
           <Source id="wind-labels" type="geojson" data={windLabels}>
             <Layer
@@ -2270,8 +2331,57 @@ export function MapHub() {
             />
           </Source>
         ) : null}
+        {yrForecastPoints.features.length > 0 ? (
+          <Source id="yr-forecast-points" type="geojson" data={yrForecastPoints}>
+            <Layer
+              id="yr-forecast-point-halo"
+              type="circle"
+              paint={{
+                "circle-radius": [
+                  "interpolate",
+                  ["linear"],
+                  ["zoom"],
+                  6,
+                  14,
+                  10,
+                  16,
+                  14,
+                  18,
+                  18,
+                  20,
+                ],
+                "circle-color": "#ffffff",
+                "circle-opacity": 0.55,
+              }}
+            />
+            <Layer
+              id="yr-forecast-point"
+              type="circle"
+              paint={{
+                "circle-radius": [
+                  "interpolate",
+                  ["linear"],
+                  ["zoom"],
+                  6,
+                  5,
+                  10,
+                  6.5,
+                  14,
+                  8,
+                  18,
+                  9,
+                  20,
+                  10,
+                ],
+                "circle-color": "#0284c7",
+                "circle-opacity": 0.92,
+                "circle-stroke-width": 2.25,
+                "circle-stroke-color": "#ffffff",
+              }}
+            />
+          </Source>
+        ) : null}
       </MapGL>
-      </div>
 
       {selectedPracticeAreaId && bundle ? (
         <PracticeAreaEditPanel
@@ -2488,7 +2598,7 @@ function PracticeAreaEditPanel({
       : "Not set";
 
   return (
-    <div className="absolute right-2 top-2 z-30 w-[min(20rem,calc(100vw-1rem))] max-w-[calc(100vw-1rem)] max-h-[min(85dvh,calc(100dvh-5rem))] overflow-auto rounded-2xl border border-teal-900/10 bg-white/95 p-3 text-sm shadow-xl shadow-teal-900/10 backdrop-blur-md md:w-80 md:max-h-[85vh]">
+    <div className="absolute right-2 top-2 z-10 w-80 max-h-[85vh] overflow-auto rounded-2xl border border-teal-900/10 bg-white/95 p-3 text-sm shadow-xl shadow-teal-900/10 backdrop-blur-md">
       <div className="mb-2 flex justify-between gap-2">
         <div className="min-w-0 flex-1">
           <span className="font-medium">{isOwn ? "Edit area" : "Area"}</span>

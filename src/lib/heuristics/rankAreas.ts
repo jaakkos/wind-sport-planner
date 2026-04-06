@@ -2,6 +2,8 @@ import centroid from "@turf/centroid";
 import type { Feature, Polygon } from "geojson";
 import type { PracticeArea, Sport } from "@/generated/prisma";
 import prisma from "@/lib/prisma";
+import { fetchElevationOpenMeteoM } from "@/lib/weather/elevationOpenMeteo";
+import { metNoPreferredRegion } from "@/lib/weather/providers/metNo";
 import { fetchForecastWithRouter } from "@/lib/weather/router";
 import type {
   RankedPracticeArea,
@@ -103,6 +105,16 @@ export async function rankPracticeAreas(args: {
     );
   const { from: windowFrom, to: windowTo } = forecastFetchWindow(args.at);
 
+  const elevationCache = new Map<string, number | null>();
+
+  async function elevationForCentroid(lat: number, lng: number): Promise<number | null> {
+    const key = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+    if (elevationCache.has(key)) return elevationCache.get(key) ?? null;
+    const m = await fetchElevationOpenMeteoM(lat, lng);
+    elevationCache.set(key, m);
+    return m;
+  }
+
   const results: RankedPracticeArea[] = [];
 
   for (const area of args.areas) {
@@ -110,8 +122,16 @@ export async function rankPracticeAreas(args: {
     const c = areaCentroid(area.geojson);
     if (!c) continue;
 
-    const fc = await fetchForecastWithRouter(c.lat, c.lng, windowFrom, windowTo);
-    const breakdown: Record<string, unknown> = { providerId: fc?.providerId ?? null };
+    const altitudeM = metNoPreferredRegion(c.lat, c.lng)
+      ? await elevationForCentroid(c.lat, c.lng)
+      : null;
+    const fc = await fetchForecastWithRouter(c.lat, c.lng, windowFrom, windowTo, {
+      altitudeM,
+    });
+    const breakdown: Record<string, unknown> = {
+      providerId: fc?.providerId ?? null,
+      altitudeM: altitudeM ?? null,
+    };
     if (!fc?.hourly.length) {
       results.push({
         areaId: area.id,
@@ -148,6 +168,7 @@ export async function rankPracticeAreas(args: {
     breakdown.experienceBoost = boost;
     breakdown.windSpeedMs = best.windSpeedMs;
     breakdown.windDirDeg = best.windDirDeg;
+    breakdown.visibilityM = best.visibilityM;
     const dirFactor = directionRankFactor({
       forecastWindFromDeg: best.windDirDeg ?? null,
       areaWindSectorsJson: area.windSectors,
@@ -169,6 +190,7 @@ export async function rankPracticeAreas(args: {
       speedMs: best.windSpeedMs,
       gustMs: best.gustMs,
       dirFromDeg: best.windDirDeg,
+      visibilityM: best.visibilityM,
       observedAt: best.observedAt.toISOString(),
     };
 

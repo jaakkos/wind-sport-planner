@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { fetchElevationOpenMeteoM } from "@/lib/weather/elevationOpenMeteo";
 
 /**
  * Elevation (m) from Open-Meteo — no API key, fair use.
@@ -15,18 +16,10 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "coordinates out of range" }, { status: 400 });
   }
 
-  const om = new URL("https://api.open-meteo.com/v1/elevation");
-  om.searchParams.set("latitude", String(lat));
-  om.searchParams.set("longitude", String(lng));
-
-  const res = await fetch(om.toString(), { next: { revalidate: 86400 } });
-  if (!res.ok) {
-    return NextResponse.json({ error: "Elevation provider error" }, { status: 502 });
-  }
-
-  const data = (await res.json()) as { elevation?: number[] };
-  const elevationM = data.elevation?.[0];
-  if (typeof elevationM !== "number" || Number.isNaN(elevationM)) {
+  const elevationM = await fetchElevationOpenMeteoM(lat, lng, {
+    next: { revalidate: 86_400 },
+  });
+  if (elevationM == null) {
     return NextResponse.json({ error: "No elevation data" }, { status: 404 });
   }
 

@@ -3,10 +3,18 @@ export type NormalizedWind = {
   windDirDeg: number | null;
   gustMs: number | null;
   temperatureC: number | null;
+  /** Horizontal visibility (m) from model; low values ≈ fog, low cloud, haze. */
+  visibilityM: number | null;
   observedAt: Date;
 };
 
 export type WeatherProviderId = string;
+
+/** Options for forecast fetches (terrain-aware providers). */
+export type ForecastFetchOptions = {
+  /** Ground elevation (m AMSL) at the query point — used by Met.no/Yr for temperature/wind correction. */
+  altitudeM?: number | null;
+};
 
 export interface WeatherProvider {
   readonly id: WeatherProviderId;
@@ -23,5 +31,6 @@ export interface WeatherProvider {
     lng: number,
     from: Date,
     to: Date,
+    options?: ForecastFetchOptions,
   ): Promise<{ hourly: NormalizedWind[]; raw: unknown } | null>;
 }

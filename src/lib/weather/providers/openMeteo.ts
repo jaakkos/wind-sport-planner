@@ -49,16 +49,20 @@ export const openMeteoProvider: WeatherProvider = {
         windDirDeg: wd[best] ?? null,
         gustMs: wg[best] != null ? wg[best] / 3.6 : null,
         temperatureC: tt[best] ?? null,
+        visibilityM: null,
         observedAt,
       },
       raw: j,
     };
   },
-  async fetchForecastSeries(lat, lng, from, to) {
+  async fetchForecastSeries(lat, lng, from, to, _options) {
     const url = new URL("https://api.open-meteo.com/v1/forecast");
     url.searchParams.set("latitude", String(lat));
     url.searchParams.set("longitude", String(lng));
-    url.searchParams.set("hourly", "wind_speed_10m,wind_direction_10m,wind_gusts_10m,temperature_2m");
+    url.searchParams.set(
+      "hourly",
+      "wind_speed_10m,wind_direction_10m,wind_gusts_10m,temperature_2m,visibility",
+    );
     const days = Math.min(
       16,
       Math.max(1, Math.ceil((to.getTime() - from.getTime()) / 86400000) + 1),
@@ -74,6 +78,7 @@ export const openMeteoProvider: WeatherProvider = {
     const wd: number[] = j.hourly?.wind_direction_10m ?? [];
     const wg: number[] = j.hourly?.wind_gusts_10m ?? [];
     const tt: number[] = j.hourly?.temperature_2m ?? [];
+    const vis: number[] = j.hourly?.visibility ?? [];
     const hourly: import("@/lib/weather/types").NormalizedWind[] = [];
     const fromT = from.getTime();
     const toT = to.getTime();
@@ -81,12 +86,15 @@ export const openMeteoProvider: WeatherProvider = {
       const observedAt = new Date(times[i] + "Z");
       const t = observedAt.getTime();
       if (t < fromT || t > toT) continue;
+      const vm = vis[i];
       hourly.push({
         observedAt,
         windSpeedMs: ws[i] != null ? ws[i] / 3.6 : null,
         windDirDeg: wd[i] ?? null,
         gustMs: wg[i] != null ? wg[i] / 3.6 : null,
         temperatureC: tt[i] ?? null,
+        visibilityM:
+          vm != null && Number.isFinite(vm) && vm >= 0 ? vm : null,
       });
     }
     return { hourly, raw: j };
