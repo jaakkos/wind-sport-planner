@@ -6,6 +6,11 @@ describe("fmiProviderStub", () => {
     expect(fmiProviderStub.supports(60.17, 24.94, new Date())).toBe(true);
   });
 
+  it("supports Oslo and Stockholm", () => {
+    expect(fmiProviderStub.supports(59.91, 10.75, new Date())).toBe(true);
+    expect(fmiProviderStub.supports(59.33, 18.07, new Date())).toBe(true);
+  });
+
   it("does not support Canary Islands", () => {
     expect(fmiProviderStub.supports(28.1, -15.4, new Date())).toBe(false);
   });

@@ -60,7 +60,7 @@ The **Forecast time** slider (hourly, up to five days ahead from a fixed “anch
 
 ## Weather providers
 
-- **`fmi_wfs`**: Finland bbox, stub (returns no data) — router falls through.
+- **`fmi_wfs`**: Norway, Sweden, and Finland mainland bbox, stub (returns no data) — router falls through.
 - **`open_meteo`**: Global historical (archive API) and forecast (forecast API).
 
 ## Cron / background sync

@@ -1835,8 +1835,8 @@ export function MapHub() {
       <MapGL
         ref={mapRef}
         initialViewState={{
-          longitude: 25,
-          latitude: 65,
+          longitude: 16,
+          latitude: 64,
           zoom: 5,
         }}
         mapStyle={mapStyle}

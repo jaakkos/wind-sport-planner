@@ -1,10 +1,24 @@
 import type { WeatherProvider } from "@/lib/weather/types";
 
-/** Approximate Finland mainland bbox (WGS84) */
-const FINLAND = { minLat: 59.5, maxLat: 70.5, minLng: 19, maxLng: 31.6 };
+/**
+ * WGS84 bbox: mainland Norway, Sweden, and Finland (excludes Svalbard and other
+ * high-Arctic territories). Used so the FMI-first chain applies across Fennoscandia;
+ * the stub still defers data to Open-Meteo until WFS is implemented.
+ */
+const NORDIC_MAINLAND = {
+  minLat: 55.25,
+  maxLat: 71.35,
+  minLng: 4.5,
+  maxLng: 31.65,
+};
 
-function inFinland(lat: number, lng: number) {
-  return lat >= FINLAND.minLat && lat <= FINLAND.maxLat && lng >= FINLAND.minLng && lng <= FINLAND.maxLng;
+function inNordicMainland(lat: number, lng: number) {
+  return (
+    lat >= NORDIC_MAINLAND.minLat &&
+    lat <= NORDIC_MAINLAND.maxLat &&
+    lng >= NORDIC_MAINLAND.minLng &&
+    lng <= NORDIC_MAINLAND.maxLng
+  );
 }
 
 /**
@@ -15,7 +29,7 @@ export const fmiProviderStub: WeatherProvider = {
   id: "fmi_wfs",
   priority: 10,
   supports(lat, lng) {
-    return inFinland(lat, lng);
+    return inNordicMainland(lat, lng);
   },
   async fetchHistoricalSnapshot() {
     return null;
