@@ -4,7 +4,11 @@ import Nodemailer from "next-auth/providers/nodemailer";
 import Resend from "next-auth/providers/resend";
 import prisma from "@/lib/prisma";
 
-/** Render sets RENDER_EXTERNAL_URL; avoids a manual AUTH_URL in render.yaml for the default hostname. */
+/**
+ * Magic links and OAuth callbacks use AUTH_URL as the site origin.
+ * Set AUTH_URL to your custom domain (e.g. https://fjelllift.com) on Render; RENDER_EXTERNAL_URL
+ * stays https://….onrender.com, so we only fall back to it when AUTH_URL is unset.
+ */
 if (!process.env.AUTH_URL?.trim() && process.env.RENDER_EXTERNAL_URL?.trim()) {
   process.env.AUTH_URL = process.env.RENDER_EXTERNAL_URL.trim();
 }
