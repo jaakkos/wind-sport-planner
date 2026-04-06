@@ -3,6 +3,11 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import Nodemailer from "next-auth/providers/nodemailer";
 import prisma from "@/lib/prisma";
 
+/** Render sets RENDER_EXTERNAL_URL; avoids a manual AUTH_URL in render.yaml for the default hostname. */
+if (!process.env.AUTH_URL?.trim() && process.env.RENDER_EXTERNAL_URL?.trim()) {
+  process.env.AUTH_URL = process.env.RENDER_EXTERNAL_URL.trim();
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   secret: process.env.AUTH_SECRET,
   adapter: PrismaAdapter(prisma),

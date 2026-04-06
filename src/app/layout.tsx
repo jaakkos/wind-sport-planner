@@ -13,7 +13,9 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const metadataBase = new URL(process.env.AUTH_URL ?? "http://localhost:3000");
+const metadataBase = new URL(
+  process.env.AUTH_URL ?? process.env.RENDER_EXTERNAL_URL ?? "http://localhost:3000",
+);
 
 export const metadata: Metadata = {
   metadataBase,

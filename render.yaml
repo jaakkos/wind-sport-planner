@@ -1,5 +1,12 @@
-# Render Blueprint — adjust repo URL and branch for your account.
-# Docs: https://render.com/docs/blueprint-spec
+# Render Blueprint — https://render.com/docs/blueprint-spec
+#
+# On first apply, Render will:
+# - Create Postgres `fjelllift-db` and inject DATABASE_URL into the web service
+# - Generate AUTH_SECRET and CRON_SECRET
+# - Prompt only for email (SMTP) variables you still must supply (no mail on Render by default)
+#
+# Public site URL: set AUTH_URL in the dashboard only if needed (e.g. custom domain).
+# Otherwise the app uses Render’s RENDER_EXTERNAL_URL at runtime.
 
 services:
   - type: web
@@ -7,40 +14,44 @@ services:
     runtime: node
     plan: starter
     region: frankfurt
-    # Build does not need DB access. Migrations run in preDeployCommand (DATABASE_URL is guaranteed there).
+    # Build does not need DB access. Migrations run in preDeployCommand (DATABASE_URL is set there).
     buildCommand: npm ci && npm run build
     preDeployCommand: npx prisma migrate deploy
     startCommand: npm start
     healthCheckPath: /
     envVars:
       - key: NODE_VERSION
-        value: 20.19.0
+        value: "20.19.0"
       - key: AUTH_TRUST_HOST
         value: "true"
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: fjelllift-db
+          property: connectionString
       - key: AUTH_SECRET
-        sync: false
-      - key: AUTH_URL
-        sync: false
+        generateValue: true
+      - key: CRON_SECRET
+        generateValue: true
       - key: EMAIL_SERVER_HOST
         sync: false
       - key: EMAIL_SERVER_PORT
         sync: false
       - key: EMAIL_FROM
         sync: false
-      - key: CRON_SECRET
+      - key: EMAIL_SERVER_USER
+        sync: false
+      - key: EMAIL_SERVER_PASSWORD
         sync: false
       # Optional: MapTiler Outdoor basemap on /map (see README)
       - key: NEXT_PUBLIC_MAPTILER_API_KEY
         sync: false
-    # Optional: Cron Job calling POST /api/cron/sync with Authorization: Bearer CRON_SECRET (reserved / noop for now)
+    # Optional: Cron Job POST /api/cron/sync with Authorization: Bearer CRON_SECRET
     #
-    # GitHub Actions: after tests pass on main, CI can POST a Render Deploy Hook if you set repo secret RENDER_DEPLOY_HOOK_URL.
-    # If you use that, disable duplicate auto-deploy on every commit in the Render service settings (or omit the secret).
+    # GitHub Actions: RENDER_DEPLOY_HOOK_URL — see README
 
 databases:
   - name: fjelllift-db
+    region: frankfurt
     databaseName: wind_sport
     user: wind
     plan: basic-256mb
