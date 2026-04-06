@@ -7,7 +7,7 @@ import { useState } from "react";
 import { SiteFooter } from "@/components/SiteFooter";
 
 type Props = {
-  /** Matches `src/auth.ts`: `resend` when `RESEND_API_KEY` is set, else `nodemailer` (e.g. Mailpit). */
+  /** Matches `src/auth.ts`: `resend` when `RESEND_API_KEY` is set, else `nodemailer`. */
   emailProviderId: "resend" | "nodemailer";
 };
 
@@ -51,21 +51,6 @@ export function LoginForm({ emailProviderId }: Props) {
           </p>
           <p className="mt-3 text-sm leading-relaxed text-zinc-600">
             Sign in with a magic link sent to your email.
-            {emailProviderId === "nodemailer" ? (
-              <>
-                {" "}
-                Local dev: open{" "}
-                <a
-                  className="font-medium text-teal-700 underline decoration-teal-700/40 underline-offset-2 hover:text-teal-900"
-                  href="http://localhost:8025"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Mailpit
-                </a>
-                .
-              </>
-            ) : null}
           </p>
           {sent ? (
             <p className="mt-6 rounded-2xl border border-teal-200/80 bg-teal-50/80 px-4 py-3 text-sm text-teal-950">

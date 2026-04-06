@@ -40,8 +40,7 @@ export default function Home() {
       </div>
       <p className="rounded-2xl bg-white/80 px-4 py-3 text-sm text-zinc-600 ring-1 ring-teal-900/10 shadow-sm shadow-teal-900/5">
         The map shows <strong>public</strong> spots without an account; sign in to draw areas, save
-        yours as private or public, and log sessions. Use Docker Compose for Postgres + Mailpit (see
-        README).
+        yours as private or public, and log sessions.
       </p>
     </main>
     <SiteFooter />
