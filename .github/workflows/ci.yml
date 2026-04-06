@@ -1,5 +1,5 @@
 # CI: lint, DB migrate, Vitest (with coverage), production build, Playwright E2E.
-# Deploy: after green CI on default branch, POST Render deploy hook (optional secret).
+# Production deploy: Render `autoDeployTrigger: checksPass` in render.yaml — waits for this workflow.
 
 name: CI
 
@@ -90,24 +90,3 @@ jobs:
           name: playwright-report
           path: playwright-report/
           if-no-files-found: ignore
-
-  deploy:
-    name: Deploy
-    needs: test
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: read
-
-    steps:
-      - name: Trigger Render deploy
-        env:
-          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
-        run: |
-          if [ -z "${RENDER_DEPLOY_HOOK_URL}" ]; then
-            echo "::notice::RENDER_DEPLOY_HOOK_URL is not set — skipping deploy. Add a Deploy Hook URL from the Render dashboard (Settings → Deploy Hook) as a repository secret."
-            exit 0
-          fi
-          curl -fsS -X POST "$RENDER_DEPLOY_HOOK_URL"
-          echo "Deploy hook requested successfully."

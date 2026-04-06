@@ -14,6 +14,9 @@ services:
     runtime: node
     plan: starter
     region: frankfurt
+    branch: main
+    # Wait for GitHub Actions (see .github/workflows/ci.yml) before building — no deploy hook needed.
+    autoDeployTrigger: checksPass
     # Build does not need DB access. Migrations run in preDeployCommand (DATABASE_URL is set there).
     buildCommand: npm ci && npm run build
     preDeployCommand: npx prisma migrate deploy
@@ -46,8 +49,6 @@ services:
       - key: NEXT_PUBLIC_MAPTILER_API_KEY
         sync: false
     # Optional: Cron Job POST /api/cron/sync with Authorization: Bearer CRON_SECRET
-    #
-    # GitHub Actions: RENDER_DEPLOY_HOOK_URL — see README
 
 databases:
   # Region is fixed when the instance is created. Renaming forces a new DB in Frankfurt if an
