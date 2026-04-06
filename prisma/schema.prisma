@@ -15,6 +15,8 @@ model User {
   email         String?   @unique @db.Citext
   emailVerified DateTime?
   image         String?
+  /** Per-sport wind bands & scoring weights for forecast ranking (JSON). */
+  rankingPreferences Json?
 
   accounts           Account[]
   sessions           Session[]

@@ -8,6 +8,11 @@ import type {
   RankedPracticeAreaWind,
 } from "@/lib/heuristics/rankAreaTypes";
 import { directionRankFactor } from "@/lib/heuristics/windDirection";
+import type { ResolvedSportRankingOptions } from "@/lib/heuristics/rankingPreferences";
+import {
+  parseRankingPreferencesDoc,
+  resolveSportRankingOptions,
+} from "@/lib/heuristics/rankingPreferences";
 import { gustPenalty, windFitScore } from "@/lib/heuristics/profiles";
 
 export type { RankedPracticeArea, RankedPracticeAreaWind } from "@/lib/heuristics/rankAreaTypes";
@@ -83,11 +88,19 @@ export async function rankPracticeAreas(args: {
   areas: PracticeArea[];
   /** ± half-width (°) around each area’s optimal for full direction score; default 30 */
   optimalMatchHalfWidthDeg?: number | null;
+  rankingOptions?: ResolvedSportRankingOptions | null;
+  rankingPreferencesJson?: unknown;
 }): Promise<RankedPracticeArea[]> {
   const halfW =
     args.optimalMatchHalfWidthDeg != null && Number.isFinite(args.optimalMatchHalfWidthDeg)
       ? Math.min(90, Math.max(5, args.optimalMatchHalfWidthDeg))
       : 30;
+  const rankOpts =
+    args.rankingOptions ??
+    resolveSportRankingOptions(
+      args.sport,
+      parseRankingPreferencesDoc(args.rankingPreferencesJson) ?? undefined,
+    );
   const { from: windowFrom, to: windowTo } = forecastFetchWindow(args.at);
 
   const results: RankedPracticeArea[] = [];
@@ -122,9 +135,9 @@ export async function rankPracticeAreas(args: {
       }
     }
 
-    const fit = windFitScore(args.sport, best.windSpeedMs);
-    const gp = gustPenalty(best.gustMs, best.windSpeedMs);
-    let score = Math.max(0, fit.score - gp);
+    const fit = windFitScore(args.sport, best.windSpeedMs, rankOpts.bands);
+    const gp = gustPenalty(best.gustMs, best.windSpeedMs, rankOpts.gustPenaltyScale);
+    let score = Math.max(0, fit.score * rankOpts.windFitScale - gp);
     const boost = await experienceBoost(
       args.userId,
       area.id,
@@ -144,7 +157,13 @@ export async function rankPracticeAreas(args: {
     breakdown.directionFactor = dirFactor;
     breakdown.areaOptimalWindFromDeg = area.optimalWindFromDeg;
     breakdown.optimalMatchHalfWidthDeg = halfW;
-    score = Math.round(Math.min(100, score * boost * dirFactor));
+    breakdown.rankingBands = rankOpts.bands;
+    breakdown.windFitScale = rankOpts.windFitScale;
+    breakdown.gustPenaltyScale = rankOpts.gustPenaltyScale;
+    breakdown.directionEmphasis = rankOpts.directionEmphasis;
+    const dirEff = 1 + (dirFactor - 1) * rankOpts.directionEmphasis;
+    breakdown.directionEffective = dirEff;
+    score = Math.round(Math.min(100, score * boost * dirEff));
 
     const wind: RankedPracticeAreaWind = {
       speedMs: best.windSpeedMs,

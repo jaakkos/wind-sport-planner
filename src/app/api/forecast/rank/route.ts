@@ -42,12 +42,22 @@ export async function GET(req: Request) {
           },
   });
 
+  let rankingPreferencesJson: unknown;
+  if (uid) {
+    const u = await prisma.user.findUnique({
+      where: { id: uid },
+      select: { rankingPreferences: true },
+    });
+    rankingPreferencesJson = u?.rankingPreferences ?? undefined;
+  }
+
   const ranked = await rankPracticeAreas({
     userId: uid,
     sport,
     at,
     areas,
     optimalMatchHalfWidthDeg,
+    rankingPreferencesJson,
   });
 
   return NextResponse.json({

@@ -1,6 +1,7 @@
 "use client";
 
 import "maplibre-gl/dist/maplibre-gl.css";
+import Image from "next/image";
 import Link from "next/link";
 import { signOut, useSession } from "next-auth/react";
 import type { ReactNode } from "react";
@@ -39,6 +40,47 @@ type ExperienceRow = {
   weatherProviderId: string | null;
   weatherObservedAt: string | null;
 };
+
+type SportRankingFormState = {
+  minWindMs: number;
+  maxWindMs: number;
+  idealMinMs: number;
+  idealMaxMs: number;
+  windFitScale: number;
+  gustPenaltyScale: number;
+  directionEmphasis: number;
+};
+
+type RankingPrefsApiResponse = {
+  doc: {
+    kiteski?: Partial<SportRankingFormState>;
+    kitesurf?: Partial<SportRankingFormState>;
+  } | null;
+  defaults: Record<
+    "kiteski" | "kitesurf",
+    SportRankingFormState & {
+      bands: { minMs: number; maxMs: number; idealMin: number; idealMax: number };
+    }
+  >;
+};
+
+function sportFormFromDefaults(
+  sport: "kiteski" | "kitesurf",
+  doc: RankingPrefsApiResponse["doc"],
+  defaults: RankingPrefsApiResponse["defaults"],
+): SportRankingFormState {
+  const d = defaults[sport];
+  const p = doc?.[sport];
+  return {
+    minWindMs: p?.minWindMs ?? d.minWindMs,
+    maxWindMs: p?.maxWindMs ?? d.maxWindMs,
+    idealMinMs: p?.idealMinMs ?? d.idealMinMs,
+    idealMaxMs: p?.idealMaxMs ?? d.idealMaxMs,
+    windFitScale: p?.windFitScale ?? d.windFitScale,
+    gustPenaltyScale: p?.gustPenaltyScale ?? d.gustPenaltyScale,
+    directionEmphasis: p?.directionEmphasis ?? d.directionEmphasis,
+  };
+}
 
 type ClickTerrain = {
   lat: number;
@@ -170,16 +212,6 @@ type ToolSectionKey =
   | "forecast"
   | "account";
 
-const ALL_TOOL_SECTIONS_CLOSED: Record<ToolSectionKey, boolean> = {
-  sport: false,
-  draw: false,
-  windRank: false,
-  basemap: false,
-  experiences: false,
-  forecast: false,
-  account: false,
-};
-
 const ALL_TOOL_SECTIONS_OPEN: Record<ToolSectionKey, boolean> = {
   sport: true,
   draw: true,
@@ -190,46 +222,77 @@ const ALL_TOOL_SECTIONS_OPEN: Record<ToolSectionKey, boolean> = {
   account: true,
 };
 
+/** First visit: show sport + forecast (core planning path). */
+const DEFAULT_TOOL_SECTIONS: Record<ToolSectionKey, boolean> = {
+  sport: true,
+  draw: false,
+  windRank: false,
+  basemap: false,
+  experiences: false,
+  forecast: true,
+  account: false,
+};
+
+type SidebarTab = "plan" | "map" | "you";
+
+const SIDEBAR_TAB_STORAGE = "fjelllift-sidebar-tab";
+
+function toolKeysForTab(tab: SidebarTab): ToolSectionKey[] {
+  switch (tab) {
+    case "plan":
+      return ["sport", "forecast", "windRank"];
+    case "map":
+      return ["basemap"];
+    case "you":
+      return ["draw", "experiences", "account"];
+    default:
+      return [];
+  }
+}
+
 function CollapsibleSection({
   title,
   summary,
   open,
   onToggle,
+  variant = "default",
   className = "",
-  toggleClassName = "",
   children,
 }: {
   title: string;
   summary?: string;
   open: boolean;
   onToggle: () => void;
+  variant?: "default" | "accent";
   className?: string;
-  toggleClassName?: string;
   children: ReactNode;
 }) {
+  const shell =
+    variant === "accent"
+      ? "rounded-2xl bg-teal-50/55 ring-1 ring-teal-200/45 shadow-sm shadow-teal-900/[0.04]"
+      : "rounded-2xl bg-white/75 ring-1 ring-teal-900/[0.07] shadow-sm shadow-teal-900/[0.04]";
   return (
-    <section
-      className={`rounded border p-2 shadow-sm ${
-        className || "border-zinc-200 bg-zinc-50/80"
-      }`.trim()}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-xs font-semibold text-zinc-900">{title}</h2>
-        <button
-          type="button"
-          className={`shrink-0 rounded border border-zinc-300/90 bg-white px-2 py-0.5 text-[11px] text-zinc-800 hover:bg-zinc-100 ${toggleClassName}`.trim()}
-          onClick={onToggle}
-          aria-expanded={open}
+    <section className={`mb-2 overflow-hidden ${shell} ${className}`.trim()}>
+      <button
+        type="button"
+        className="sticky top-0 z-[2] flex w-full items-start gap-2.5 rounded-t-2xl bg-white/88 px-3 py-2.5 text-left backdrop-blur-md transition-colors hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
+        onClick={onToggle}
+        aria-expanded={open}
+      >
+        <span
+          className={`mt-0.5 inline-block shrink-0 text-xs text-teal-700 transition-transform duration-200 ease-out ${open ? "rotate-180" : ""}`}
+          aria-hidden
         >
-          {open ? "Hide" : "Show"}
-        </button>
-      </div>
-      {!open && summary ? (
-        <p className="mt-1.5 text-[10px] leading-snug text-zinc-600">{summary}</p>
-      ) : null}
-      {open ? (
-        <div className="mt-2 space-y-2 border-t border-zinc-200/90 pt-2">{children}</div>
-      ) : null}
+          ▼
+        </span>
+        <span className="min-w-0 flex-1">
+          <h2 className="text-sm font-semibold tracking-tight text-zinc-900">{title}</h2>
+          {!open && summary ? (
+            <span className="mt-0.5 block text-[11px] leading-snug text-zinc-500">{summary}</span>
+          ) : null}
+        </span>
+      </button>
+      {open ? <div className="space-y-2.5 px-3 pb-3.5 pt-0 text-sm">{children}</div> : null}
     </section>
   );
 }
@@ -327,8 +390,55 @@ export function MapHub() {
   /** ± degrees around each area’s saved optimal for full direction multiplier before taper. */
   const [optimalWindHalfWidthDeg, setOptimalWindHalfWidthDeg] = useState(30);
   const [sectorHalfWidthDeg, setSectorHalfWidthDeg] = useState(45);
+  /** Logged-in: editable wind bands & weights for forecast ranking (per sport). */
+  const [rankingForm, setRankingForm] = useState<{
+    kiteski: SportRankingFormState;
+    kitesurf: SportRankingFormState;
+  } | null>(null);
+  const [rankingPrefsLoading, setRankingPrefsLoading] = useState(false);
   const [toolSectionsOpen, setToolSectionsOpen] =
-    useState<Record<ToolSectionKey, boolean>>(ALL_TOOL_SECTIONS_CLOSED);
+    useState<Record<ToolSectionKey, boolean>>(DEFAULT_TOOL_SECTIONS);
+
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>("plan");
+
+  /** Avoid SSR/client mismatch for `datetime-local` default and similar. */
+  const [clientReady, setClientReady] = useState(false);
+  useEffect(() => {
+    setClientReady(true);
+  }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(SIDEBAR_TAB_STORAGE);
+      if (raw === "plan" || raw === "map" || raw === "you") setSidebarTab(raw);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_TAB_STORAGE, sidebarTab);
+    } catch {
+      /* ignore */
+    }
+  }, [sidebarTab]);
+
+  const expandCurrentTabSections = useCallback(() => {
+    setToolSectionsOpen((s) => {
+      const next = { ...s };
+      for (const k of toolKeysForTab(sidebarTab)) next[k] = true;
+      return next;
+    });
+  }, [sidebarTab]);
+
+  const collapseCurrentTabSections = useCallback(() => {
+    setToolSectionsOpen((s) => {
+      const next = { ...s };
+      for (const k of toolKeysForTab(sidebarTab)) next[k] = false;
+      return next;
+    });
+  }, [sidebarTab]);
 
   const toggleToolSection = useCallback((key: ToolSectionKey) => {
     setToolSectionsOpen((s) => ({ ...s, [key]: !s[key] }));
@@ -382,6 +492,46 @@ export function MapHub() {
     void loadExperiences();
   }, [loadExperiences]);
 
+  const loadRankingPrefs = useCallback(async () => {
+    setRankingPrefsLoading(true);
+    try {
+      const r = await fetch("/api/user/ranking-preferences");
+      if (!r.ok) {
+        setRankingForm(null);
+        return;
+      }
+      const j = (await r.json()) as RankingPrefsApiResponse;
+      setRankingForm({
+        kiteski: sportFormFromDefaults("kiteski", j.doc, j.defaults),
+        kitesurf: sportFormFromDefaults("kitesurf", j.doc, j.defaults),
+      });
+    } finally {
+      setRankingPrefsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (sessionPending) return;
+    if (!isAuthed) {
+      setRankingForm(null);
+      return;
+    }
+    void loadRankingPrefs();
+  }, [sessionPending, isAuthed, loadRankingPrefs]);
+
+  const patchActiveSportRanking = useCallback(
+    (patch: Partial<SportRankingFormState>) => {
+      setRankingForm((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          [activeSport]: { ...prev[activeSport], ...patch },
+        };
+      });
+    },
+    [activeSport],
+  );
+
   const loadRank = useCallback(async () => {
     const q = new URLSearchParams({
       sport: activeSport,
@@ -393,6 +543,57 @@ export function MapHub() {
     const j = (await r.json()) as { ranked: RankedPracticeArea[] };
     setRanked(j.ranked ?? []);
   }, [activeSport, forecastAtIso, optimalWindHalfWidthDeg]);
+
+  const saveRankingPrefsForActiveSport = useCallback(async () => {
+    if (!rankingForm) return;
+    const s = activeSport;
+    const f = rankingForm[s];
+    const r = await fetch("/api/user/ranking-preferences", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        [s]: {
+          minWindMs: f.minWindMs,
+          maxWindMs: f.maxWindMs,
+          idealMinMs: f.idealMinMs,
+          idealMaxMs: f.idealMaxMs,
+          windFitScale: f.windFitScale,
+          gustPenaltyScale: f.gustPenaltyScale,
+          directionEmphasis: f.directionEmphasis,
+        },
+      }),
+    });
+    if (!r.ok) {
+      setMsg("Could not save scoring preferences.");
+      return;
+    }
+    setMsg(null);
+    const j = (await r.json()) as RankingPrefsApiResponse;
+    setRankingForm({
+      kiteski: sportFormFromDefaults("kiteski", j.doc, j.defaults),
+      kitesurf: sportFormFromDefaults("kitesurf", j.doc, j.defaults),
+    });
+    await loadRank();
+  }, [rankingForm, activeSport, loadRank]);
+
+  const resetRankingPrefsForActiveSport = useCallback(async () => {
+    const r = await fetch("/api/user/ranking-preferences", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [activeSport]: null }),
+    });
+    if (!r.ok) {
+      setMsg("Could not reset scoring preferences.");
+      return;
+    }
+    setMsg(null);
+    const j = (await r.json()) as RankingPrefsApiResponse;
+    setRankingForm({
+      kiteski: sportFormFromDefaults("kiteski", j.doc, j.defaults),
+      kitesurf: sportFormFromDefaults("kitesurf", j.doc, j.defaults),
+    });
+    await loadRank();
+  }, [activeSport, loadRank]);
 
   useEffect(() => {
     const t = setTimeout(() => void loadRank(), 300);
@@ -526,6 +727,7 @@ export function MapHub() {
 
   useEffect(() => {
     if (mapMode === "draw") {
+      setSidebarTab("you");
       setToolSectionsOpen((s) => (s.draw ? s : { ...s, draw: true }));
     }
   }, [mapMode]);
@@ -554,6 +756,7 @@ export function MapHub() {
     (id: string) => {
       if (mapMode === "draw") {
         setMsg("Finish or cancel area drawing first.");
+        setSidebarTab("you");
         setToolSectionsOpen((s) => ({ ...s, draw: true }));
         return;
       }
@@ -562,6 +765,7 @@ export function MapHub() {
       setWindPickHover(null);
       setTerrainClick(null);
       setMapMode("pickWind");
+      setSidebarTab("plan");
       setToolSectionsOpen((s) => ({ ...s, windRank: true }));
       setMsg("Area optimal: click arrow tail, then head (downwind). Esc = cancel.");
     },
@@ -716,39 +920,110 @@ export function MapHub() {
       return "Drawing optimal wind for practice area…";
     }
     const pctHalf = Math.round((optimalWindHalfWidthDeg / 180) * 100);
-    return `Per-area optimal · match width ±${optimalWindHalfWidthDeg}° (${pctHalf}% half-circle)`;
-  }, [mapMode, optimalWindHalfWidthDeg]);
+    let band = "";
+    if (isAuthed && rankingForm) {
+      const w = rankingForm[activeSport];
+      band = ` · ${w.minWindMs}–${w.maxWindMs} m/s`;
+    }
+    return `Per-area optimal · match width ±${optimalWindHalfWidthDeg}° (${pctHalf}% half-circle)${band}`;
+  }, [mapMode, optimalWindHalfWidthDeg, isAuthed, rankingForm, activeSport]);
 
   const forecastSummary = useMemo(() => {
-    const t = new Date(forecastAtIso).toLocaleString(undefined, {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-    return `${ranked.length} area(s) · ${t}`;
-  }, [forecastAtIso, ranked.length]);
+    const rel =
+      hoursAhead === 0
+        ? "anchored to this hour"
+        : `+${hoursAhead}h from the anchor hour`;
+    const scoringHint =
+      sessionPending
+        ? ""
+        : isAuthed && rankingForm
+          ? " · scoring below"
+          : !isAuthed
+            ? " · sign in for custom scoring"
+            : "";
+    return `${ranked.length} area(s) · ${rel}${scoringHint}`;
+  }, [hoursAhead, ranked.length, sessionPending, isAuthed, rankingForm]);
 
   return (
     <div className="relative h-screen w-full">
-      <div className="absolute left-2 top-2 z-10 flex max-w-sm max-h-[92vh] flex-col gap-2 overflow-y-auto rounded bg-white/95 p-3 text-sm shadow">
-        <div className="flex flex-wrap gap-1 border-b border-zinc-200 pb-2">
-          <button
-            type="button"
-            className="rounded border border-zinc-300 bg-white px-2 py-0.5 text-[10px] text-zinc-800 hover:bg-zinc-50"
-            onClick={() => setToolSectionsOpen({ ...ALL_TOOL_SECTIONS_OPEN })}
+      <div className="absolute left-2 top-2 z-10 flex max-w-[min(24rem,calc(100vw-1rem))] max-h-[92vh] min-h-0 flex-col text-sm">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-teal-900/10 bg-white/90 shadow-xl shadow-teal-900/[0.07] backdrop-blur-md">
+          <div className="shrink-0 border-b border-teal-900/10 bg-gradient-to-br from-teal-50/90 via-white to-sky-50/35">
+            <Link
+              href="/"
+              className="flex w-full items-center justify-center px-4 py-4 outline-none transition hover:bg-white/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-teal-600"
+              title="Fjell Lift — home"
+            >
+              <Image
+                src="/brand/fjell-lift-logo.png"
+                alt="Fjell Lift"
+                width={560}
+                height={187}
+                className="h-[4.25rem] w-auto max-w-full object-contain sm:h-[5.25rem]"
+                sizes="(max-width: 640px) 85vw, 360px"
+                priority
+              />
+            </Link>
+            <div
+              role="tablist"
+              aria-label="Tool groups"
+              className="mx-2.5 mb-2 flex gap-0.5 rounded-xl bg-teal-900/[0.075] p-1"
+            >
+              {(
+                [
+                  ["plan", "Plan", "Sport, forecast & ranking"],
+                  ["map", "Map", "Basemap & terrain look"],
+                  ["you", "You", "Draw, sessions & account"],
+                ] as const
+              ).map(([id, label, hint]) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={sidebarTab === id}
+                  title={hint}
+                  className={`min-h-[40px] flex-1 rounded-lg px-1.5 py-2 text-center text-xs font-semibold transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600 ${
+                    sidebarTab === id
+                      ? "bg-white text-teal-900 shadow-sm ring-1 ring-teal-900/10"
+                      : "text-zinc-600 hover:bg-white/60 hover:text-teal-800"
+                  }`}
+                  onClick={() => setSidebarTab(id as SidebarTab)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="mx-2.5 mb-2.5 flex flex-wrap items-center justify-end gap-1">
+              <button
+                type="button"
+                className="rounded-lg px-2 py-1 text-[10px] font-medium text-teal-800/90 transition-colors hover:bg-white/90"
+                onClick={() => expandCurrentTabSections()}
+              >
+                Expand tab
+              </button>
+              <button
+                type="button"
+                className="rounded-lg px-2 py-1 text-[10px] font-medium text-zinc-500 transition-colors hover:bg-white/90"
+                onClick={() => collapseCurrentTabSections()}
+              >
+                Collapse tab
+              </button>
+              <button
+                type="button"
+                className="rounded-lg px-2 py-1 text-[10px] font-medium text-zinc-400 transition-colors hover:bg-white/90"
+                onClick={() => setToolSectionsOpen({ ...ALL_TOOL_SECTIONS_OPEN })}
+                title="Expand every section in every tab"
+              >
+                All sections
+              </button>
+            </div>
+          </div>
+          <div
+            className="sidebar-panel min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 py-2.5"
+            role="tabpanel"
           >
-            Expand all
-          </button>
-          <button
-            type="button"
-            className="rounded border border-zinc-300 bg-white px-2 py-0.5 text-[10px] text-zinc-800 hover:bg-zinc-50"
-            onClick={() => setToolSectionsOpen({ ...ALL_TOOL_SECTIONS_CLOSED })}
-          >
-            Collapse all
-          </button>
-        </div>
-
+            {sidebarTab === "plan" && (
+              <>
         <CollapsibleSection
           title="Sport"
           summary={`Active: ${activeSport === "kiteski" ? "Kite ski" : "Kite surf"}`}
@@ -759,7 +1034,7 @@ export function MapHub() {
             <select
               value={activeSport}
               onChange={(e) => setActiveSport(e.target.value as "kiteski" | "kitesurf")}
-              className="rounded border px-2 py-1"
+              className="w-full rounded-xl border border-teal-900/10 bg-white px-3 py-2 text-sm text-zinc-900 shadow-inner shadow-teal-900/[0.03] focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-600/20"
             >
               <option value="kiteski">Kite ski</option>
               <option value="kitesurf">Kite surf</option>
@@ -768,110 +1043,260 @@ export function MapHub() {
         </CollapsibleSection>
 
         <CollapsibleSection
-          title="Draw areas"
-          summary={
-            !isAuthed
-              ? "Sign in to add your own polygons"
-              : mapMode === "draw"
-                ? editingAreaId
-                  ? "Editing boundary…"
-                  : "Drawing polygon…"
-                : "Draw & save practice polygons on the map"
-          }
-          open={toolSectionsOpen.draw}
-          onToggle={() => toggleToolSection("draw")}
+          title="Forecast &amp; ranked areas"
+          summary={forecastSummary}
+          open={toolSectionsOpen.forecast}
+          onToggle={() => toggleToolSection("forecast")}
         >
-          {sessionPending ? (
-            <p className="text-[11px] text-zinc-500">Checking session…</p>
-          ) : !isAuthed ? (
-            <p className="text-[11px] leading-snug text-zinc-600">
-              Anyone can browse <strong>public</strong> areas on the map.{" "}
-              <Link href="/login" className="font-medium text-sky-700 underline hover:text-sky-900">
-                Sign in
-              </Link>{" "}
-              to draw and save your own practice polygons.
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-zinc-800">Forecast time</span>
+            <input
+              type="range"
+              min={0}
+              max={FORECAST_SLIDER_MAX_H}
+              step={1}
+              value={hoursAhead}
+              onChange={(e) => setHoursAhead(Number(e.target.value))}
+              className="w-full accent-teal-600"
+            />
+            <p
+              className="text-xs font-medium text-zinc-800"
+              suppressHydrationWarning
+              title="Shown in your device timezone after load"
+            >
+              {new Date(forecastAtIso).toLocaleString(undefined, {
+                weekday: "short",
+                month: "short",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
             </p>
-          ) : (
-            <>
-              <p className="text-[11px] leading-snug text-zinc-600">
-                Polygons use forecast wind at the centre, your sport, and each area’s saved wind sectors /
-                optimal (set in Edit area).
+            <div className="flex flex-wrap items-center justify-between gap-1 text-[11px] text-zinc-600">
+              <span>
+                Anchor +{hoursAhead}h (max {FORECAST_SLIDER_MAX_H}h)
+              </span>
+              <button
+                type="button"
+                className="rounded-lg border border-teal-200/80 bg-white px-2 py-1 text-[10px] font-medium text-teal-900 hover:bg-teal-50/80"
+                onClick={() => {
+                  setForecastAnchorMs(floorToHourMs());
+                  setHoursAhead(0);
+                }}
+              >
+                Now
+              </button>
+            </div>
+            <p className="text-[10px] leading-snug text-zinc-500">
+              Slider moves the forecast hour (Open-Meteo). Blue arrows point{" "}
+              <strong>downwind</strong>; labels use wind <strong>from</strong> (meteorology).
+            </p>
+          </label>
+          {ranked.length > 0 ? (
+            <div className="space-y-1">
+              <p className="text-[10px] font-medium text-zinc-600">
+                Areas (best score first) — tap to fly the map here
               </p>
-              <label className="flex flex-col gap-0.5">
-                <span className="text-[11px] font-medium text-zinc-700">Name (new drawings)</span>
-                <input
-                  type="text"
-                  value={drawAreaName}
-                  onChange={(e) => setDrawAreaName(e.target.value.slice(0, 120))}
-                  placeholder="e.g. West beach"
-                  className="rounded border px-2 py-1 text-xs"
-                  maxLength={120}
-                />
-              </label>
-              <div className="flex flex-wrap gap-1">
-                {mapMode === "browse" ? (
+              <ul className="max-h-52 space-y-0 overflow-auto rounded-xl bg-teal-50/20 text-[11px] leading-snug text-zinc-700 ring-1 ring-teal-900/5">
+                {ranked.map((r, idx) => (
+                  <li key={r.areaId} className="border-b border-teal-900/[0.06] last:border-0">
+                    <button
+                      type="button"
+                      className="w-full rounded-lg px-2 py-2 text-left transition-colors hover:bg-teal-100/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-teal-600"
+                      onClick={() => focusRankedAreaOnMap(r)}
+                    >
+                      <span className="flex items-start gap-2">
+                        <span className="w-5 shrink-0 pt-0.5 text-right font-mono text-[10px] text-zinc-400 tabular-nums">
+                          {idx + 1}.
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="font-medium text-zinc-900">
+                            {r.name.trim() ? r.name.trim() : `Area ${r.areaId.slice(0, 6)}`}
+                          </span>
+                          <span className="text-zinc-600">
+                            {" · score "}
+                            <strong className="text-zinc-900">{r.score}</strong>
+                            {r.wind ? (
+                              <>
+                                {" · "}
+                                {r.wind.speedMs != null ? `${r.wind.speedMs.toFixed(1)} m/s` : "—"}
+                                {r.wind.gustMs != null ? ` (g ${r.wind.gustMs.toFixed(1)})` : ""}
+                                {" from "}
+                                {cardinalFromDeg(r.wind.dirFromDeg)}
+                                {r.wind.dirFromDeg != null ? ` ${Math.round(r.wind.dirFromDeg)}°` : ""}
+                              </>
+                            ) : (
+                              <span className="text-zinc-400"> · no forecast</span>
+                            )}
+                          </span>
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <p className="text-[10px] text-zinc-500">
+              {isAuthed
+                ? "No ranked areas yet — add a practice polygon or mark an area public."
+                : "No public areas for this sport yet — check the other sport or sign in to explore private spots you have saved."}
+            </p>
+          )}
+          {isAuthed ? (
+            rankingPrefsLoading || !rankingForm ? (
+              <p className="mt-3 text-[10px] text-zinc-500">Loading your scoring settings…</p>
+            ) : (
+              <div className="mt-3 space-y-3 rounded-2xl border border-teal-200/80 bg-teal-50/30 p-3 ring-1 ring-teal-900/[0.06]">
+                <p className="text-[11px] font-semibold text-zinc-800">
+                  Your forecast scoring — {activeSport === "kiteski" ? "kite ski" : "kite surf"}
+                </p>
+                <p className="text-[10px] leading-snug text-zinc-600">
+                  Wind speed window and ideal band set how strongly forecast speed matches your sport.
+                  Weights scale wind fit, gust penalty, and how much direction matters before the
+                  experience boost.
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="flex flex-col gap-0.5">
+                    <span className="text-[10px] font-medium text-zinc-700">Min wind (m/s)</span>
+                    <input
+                      type="number"
+                      min={0.5}
+                      max={60}
+                      step={0.5}
+                      value={rankingForm[activeSport].minWindMs}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        if (Number.isFinite(v)) patchActiveSportRanking({ minWindMs: v });
+                      }}
+                      className="rounded-lg border border-teal-900/15 bg-white px-2 py-1 text-xs text-zinc-900"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-0.5">
+                    <span className="text-[10px] font-medium text-zinc-700">Max wind (m/s)</span>
+                    <input
+                      type="number"
+                      min={0.5}
+                      max={60}
+                      step={0.5}
+                      value={rankingForm[activeSport].maxWindMs}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        if (Number.isFinite(v)) patchActiveSportRanking({ maxWindMs: v });
+                      }}
+                      className="rounded-lg border border-teal-900/15 bg-white px-2 py-1 text-xs text-zinc-900"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-0.5">
+                    <span className="text-[10px] font-medium text-zinc-700">Ideal min (m/s)</span>
+                    <input
+                      type="number"
+                      min={0.5}
+                      max={60}
+                      step={0.5}
+                      value={rankingForm[activeSport].idealMinMs}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        if (Number.isFinite(v)) patchActiveSportRanking({ idealMinMs: v });
+                      }}
+                      className="rounded-lg border border-teal-900/15 bg-white px-2 py-1 text-xs text-zinc-900"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-0.5">
+                    <span className="text-[10px] font-medium text-zinc-700">Ideal max (m/s)</span>
+                    <input
+                      type="number"
+                      min={0.5}
+                      max={60}
+                      step={0.5}
+                      value={rankingForm[activeSport].idealMaxMs}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        if (Number.isFinite(v)) patchActiveSportRanking({ idealMaxMs: v });
+                      }}
+                      className="rounded-lg border border-teal-900/15 bg-white px-2 py-1 text-xs text-zinc-900"
+                    />
+                  </label>
+                </div>
+                <label className="flex flex-col gap-1">
+                  <span className="text-[10px] font-medium text-zinc-700">
+                    Wind speed fit weight ×{rankingForm[activeSport].windFitScale.toFixed(2)}
+                  </span>
+                  <input
+                    type="range"
+                    min={0.25}
+                    max={2}
+                    step={0.05}
+                    value={rankingForm[activeSport].windFitScale}
+                    onChange={(e) =>
+                      patchActiveSportRanking({ windFitScale: Number(e.target.value) })
+                    }
+                    className="w-full accent-teal-600"
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-[10px] font-medium text-zinc-700">
+                    Gust penalty ×{rankingForm[activeSport].gustPenaltyScale.toFixed(2)} (0 = ignore gusts)
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={2}
+                    step={0.05}
+                    value={rankingForm[activeSport].gustPenaltyScale}
+                    onChange={(e) =>
+                      patchActiveSportRanking({ gustPenaltyScale: Number(e.target.value) })
+                    }
+                    className="w-full accent-teal-600"
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-[10px] font-medium text-zinc-700">
+                    Direction emphasis {(rankingForm[activeSport].directionEmphasis * 100).toFixed(0)}%
+                    (0 = ignore direction match)
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={rankingForm[activeSport].directionEmphasis}
+                    onChange={(e) =>
+                      patchActiveSportRanking({ directionEmphasis: Number(e.target.value) })
+                    }
+                    className="w-full accent-teal-600"
+                  />
+                </label>
+                <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    className="rounded bg-sky-700 px-2 py-1 text-xs text-white"
-                    onClick={() => {
-                      setWindPickStart(null);
-                      setWindPickHover(null);
-                      setWindPickAreaId(null);
-                      setDrawRing([]);
-                      setEditingAreaId(null);
-                      setMapMode("draw");
-                      setTerrainClick(null);
-                    }}
+                    className="rounded-xl border border-teal-600/40 bg-teal-600 px-3 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-teal-700"
+                    onClick={() => void saveRankingPrefsForActiveSport()}
                   >
-                    Draw area
+                    Save scoring
                   </button>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      className="rounded bg-zinc-800 px-2 py-1 text-xs text-white"
-                      disabled={loading}
-                      onClick={() => void finishDrawing()}
-                    >
-                      Finish &amp; save
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded border border-zinc-300 px-2 py-1 text-xs"
-                      onClick={() => setDrawRing((r) => r.slice(0, -1))}
-                      disabled={drawRing.length === 0}
-                    >
-                      Undo point
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded border border-zinc-300 px-2 py-1 text-xs"
-                      onClick={() => {
-                        setDrawRing([]);
-                        setMapMode("browse");
-                        setEditingAreaId(null);
-                      }}
-                    >
-                      Cancel
-                    </button>
-                  </>
-                )}
+                  <button
+                    type="button"
+                    className="rounded-xl border border-teal-900/15 bg-white px-3 py-2 text-[11px] font-medium text-zinc-800 hover:bg-teal-50/80"
+                    onClick={() => void resetRankingPrefsForActiveSport()}
+                  >
+                    Use defaults (this sport)
+                  </button>
+                </div>
               </div>
-              {mapMode === "draw" && (
-                <p className="text-[11px] text-zinc-600">
-                  {editingAreaId ? (
-                    <span className="font-medium text-amber-800">Editing boundary · </span>
-                  ) : null}
-                  {drawRing.length} point{drawRing.length === 1 ? "" : "s"} · click map for corners ·{" "}
-                  <kbd className="rounded bg-zinc-200 px-0.5">Esc</kbd> cancel
-                </p>
-              )}
-            </>
+            )
+          ) : (
+            <p className="mt-3 text-[10px] leading-snug text-zinc-500">
+              <Link href="/login" className="font-medium text-teal-800 underline-offset-2 hover:underline">
+                Sign in
+              </Link>{" "}
+              to set your own wind bands and scoring weights for the ranked list.
+            </p>
           )}
         </CollapsibleSection>
 
         <CollapsibleSection
-          title="Wind &amp; score colours"
+          title="How spots are ranked"
           summary={windRankSummary}
           open={toolSectionsOpen.windRank}
           onToggle={() => toggleToolSection("windRank")}
@@ -883,7 +1308,7 @@ export function MapHub() {
               an optimal get <strong>no direction penalty</strong> (unless you use saved wind sectors).
             </p>
             {mapMode === "pickWind" ? (
-              <div className="space-y-2 rounded border border-violet-300/90 bg-violet-50/90 p-2">
+              <div className="space-y-2 rounded-2xl border border-violet-200/80 bg-gradient-to-b from-violet-50/95 to-white/90 p-3 shadow-inner shadow-violet-900/5">
                 <p className="text-[10px] font-medium text-violet-950">
                   Saving to the open practice area — see the edit panel for tips.
                 </p>
@@ -902,14 +1327,14 @@ export function MapHub() {
                 </p>
                 <button
                   type="button"
-                  className="w-full rounded border border-violet-400 bg-white px-2 py-1 text-[11px] text-violet-900 hover:bg-violet-100/80"
+                  className="w-full rounded-xl border border-violet-300/80 bg-white px-2 py-2 text-[11px] font-medium text-violet-900 hover:bg-violet-50"
                   onClick={() => cancelPickWind()}
                 >
                   Cancel drawing
                 </button>
                 <p className="text-[10px] text-violet-800/90">
-                  <kbd className="rounded bg-violet-200/80 px-0.5">Esc</kbd> cancel · right-click resets
-                  tail
+                  <kbd className="rounded-md bg-violet-200/80 px-1 py-0.5">Esc</kbd> cancel · right-click
+                  resets tail
                 </p>
               </div>
             ) : null}
@@ -953,6 +1378,10 @@ export function MapHub() {
               bearing.
             </span>
           </label>
+          <p className="mt-2 text-[10px] leading-snug text-zinc-500">
+            Min/max wind, ideal band, and score weights are in <strong>Forecast &amp; ranked areas</strong>{" "}
+            above. This section is for direction match width and drawing optimal wind on the map.
+          </p>
           <div className="flex flex-wrap gap-2 text-[10px] text-zinc-600">
             <span className="inline-flex items-center gap-1">
               <span className="h-2 w-4 rounded-sm" style={{ background: "#22c55e" }} />
@@ -972,7 +1401,10 @@ export function MapHub() {
             </span>
           </div>
         </CollapsibleSection>
-
+              </>
+            )}
+            {sidebarTab === "map" && (
+              <>
         <CollapsibleSection
           title="Basemap"
           summary={basemapSummary}
@@ -983,7 +1415,7 @@ export function MapHub() {
             <select
               value={basemap}
               onChange={(e) => setBasemap(e.target.value as BasemapId)}
-              className="rounded border px-2 py-1"
+              className="w-full rounded-xl border border-teal-900/10 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-600/20"
             >
               <option value="hybrid">Hybrid — OSM detail + topo relief &amp; contours</option>
               <option value="osm">OSM — maximum road/path detail</option>
@@ -1008,9 +1440,115 @@ export function MapHub() {
                 max={100}
                 value={Math.round(reliefOpacity * 100)}
                 onChange={(e) => setReliefOpacity(Number(e.target.value) / 100)}
-                className="w-full"
+                className="w-full accent-teal-600"
               />
             </label>
+          )}
+        </CollapsibleSection>
+              </>
+            )}
+            {sidebarTab === "you" && (
+              <>
+        <CollapsibleSection
+          title="Practice areas"
+          summary={
+            !isAuthed
+              ? "Sign in to draw your own polygons"
+              : mapMode === "draw"
+                ? editingAreaId
+                  ? "Editing boundary…"
+                  : "Drawing polygon…"
+                : "Draw & save polygons on the map"
+          }
+          open={toolSectionsOpen.draw}
+          onToggle={() => toggleToolSection("draw")}
+        >
+          {sessionPending ? (
+            <p className="text-[11px] text-zinc-500">Checking session…</p>
+          ) : !isAuthed ? (
+            <p className="text-[11px] leading-snug text-zinc-600">
+              Anyone can browse <strong>public</strong> areas.{" "}
+              <Link href="/login" className="font-medium text-teal-700 underline hover:text-teal-900">
+                Sign in
+              </Link>{" "}
+              to add your own spots.
+            </p>
+          ) : (
+            <>
+              <p className="text-[11px] leading-snug text-zinc-600">
+                Uses forecast at polygon centre and each area’s wind settings (set under{" "}
+                <strong>Edit area</strong>).
+              </p>
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] font-medium text-zinc-700">Name for new drawings</span>
+                <input
+                  type="text"
+                  value={drawAreaName}
+                  onChange={(e) => setDrawAreaName(e.target.value.slice(0, 120))}
+                  placeholder="e.g. West beach"
+                  className="rounded-xl border border-teal-900/10 bg-white px-3 py-2 text-xs text-zinc-900 focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-600/20"
+                  maxLength={120}
+                />
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {mapMode === "browse" ? (
+                  <button
+                    type="button"
+                    className="rounded-xl bg-teal-700 px-3 py-2 text-xs font-semibold text-white shadow-sm shadow-teal-900/15 hover:bg-teal-800"
+                    onClick={() => {
+                      setWindPickStart(null);
+                      setWindPickHover(null);
+                      setWindPickAreaId(null);
+                      setDrawRing([]);
+                      setEditingAreaId(null);
+                      setMapMode("draw");
+                      setTerrainClick(null);
+                    }}
+                  >
+                    Start drawing
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="rounded-xl bg-zinc-800 px-3 py-2 text-xs font-medium text-white hover:bg-zinc-900"
+                      disabled={loading}
+                      onClick={() => void finishDrawing()}
+                    >
+                      Finish &amp; save
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-xl border border-zinc-300 bg-white px-2 py-2 text-xs hover:bg-zinc-50"
+                      onClick={() => setDrawRing((r) => r.slice(0, -1))}
+                      disabled={drawRing.length === 0}
+                    >
+                      Undo point
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-xl border border-zinc-300 bg-white px-2 py-2 text-xs hover:bg-zinc-50"
+                      onClick={() => {
+                        setDrawRing([]);
+                        setMapMode("browse");
+                        setEditingAreaId(null);
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </>
+                )}
+              </div>
+              {mapMode === "draw" && (
+                <p className="text-[11px] text-zinc-600">
+                  {editingAreaId ? (
+                    <span className="font-medium text-amber-800">Editing boundary · </span>
+                  ) : null}
+                  {drawRing.length} point{drawRing.length === 1 ? "" : "s"} · click map for corners ·{" "}
+                  <kbd className="rounded-md bg-zinc-200/90 px-1 py-0.5 text-[10px]">Esc</kbd> cancels
+                </p>
+              )}
+            </>
           )}
         </CollapsibleSection>
 
@@ -1025,8 +1563,7 @@ export function MapHub() {
           }
           open={toolSectionsOpen.experiences}
           onToggle={() => toggleToolSection("experiences")}
-          className="border-teal-200 bg-teal-50/70"
-          toggleClassName="border-teal-300/80 text-teal-950 hover:bg-teal-100/80"
+          variant="accent"
         >
           {sessionPending ? (
             <p className="text-[11px] text-zinc-500">Checking session…</p>
@@ -1092,10 +1629,11 @@ export function MapHub() {
             <label className="text-[11px] font-medium text-zinc-800">
               When
               <input
+                key={clientReady ? "occurredAt" : "occurredAt-pending"}
                 type="datetime-local"
                 name="occurredAt"
                 required
-                defaultValue={toDatetimeLocalInput(new Date())}
+                defaultValue={clientReady ? toDatetimeLocalInput(new Date()) : ""}
                 className="mt-0.5 w-full rounded border px-2 py-1 text-xs"
               />
             </label>
@@ -1151,10 +1689,12 @@ export function MapHub() {
                   <span className="min-w-0 flex-1 leading-snug">
                     <span className="font-medium">{ex.practiceAreaName}</span>
                     <br />
-                    {new Date(ex.occurredAt).toLocaleString(undefined, {
-                      dateStyle: "short",
-                      timeStyle: "short",
-                    })}{" "}
+                    <span suppressHydrationWarning>
+                      {new Date(ex.occurredAt).toLocaleString(undefined, {
+                        dateStyle: "short",
+                        timeStyle: "short",
+                      })}
+                    </span>{" "}
                     · {ex.sessionSuitability}
                     {ex.windDirDeg != null ? (
                       <>
@@ -1199,105 +1739,6 @@ export function MapHub() {
         </CollapsibleSection>
 
         <CollapsibleSection
-          title="Forecast &amp; areas"
-          summary={forecastSummary}
-          open={toolSectionsOpen.forecast}
-          onToggle={() => toggleToolSection("forecast")}
-        >
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-zinc-800">Forecast time</span>
-            <input
-              type="range"
-              min={0}
-              max={FORECAST_SLIDER_MAX_H}
-              step={1}
-              value={hoursAhead}
-              onChange={(e) => setHoursAhead(Number(e.target.value))}
-              className="w-full"
-            />
-            <p className="text-xs font-medium text-zinc-800">
-              {new Date(forecastAtIso).toLocaleString(undefined, {
-                weekday: "short",
-                month: "short",
-                day: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-            </p>
-            <div className="flex flex-wrap items-center justify-between gap-1 text-[11px] text-zinc-600">
-              <span>
-                Anchor +{hoursAhead}h (max {FORECAST_SLIDER_MAX_H}h)
-              </span>
-              <button
-                type="button"
-                className="rounded border border-zinc-300 px-1.5 py-0.5 text-[10px]"
-                onClick={() => {
-                  setForecastAnchorMs(floorToHourMs());
-                  setHoursAhead(0);
-                }}
-              >
-                Now
-              </button>
-            </div>
-            <p className="text-[10px] leading-snug text-zinc-500">
-              Slider moves the forecast hour (Open-Meteo). Blue arrows point{" "}
-              <strong>downwind</strong>; labels use wind <strong>from</strong> (meteorology).
-            </p>
-          </label>
-          {ranked.length > 0 ? (
-            <div className="space-y-1">
-              <p className="text-[10px] font-medium text-zinc-600">
-                Areas (best score first) — click to fly map here
-              </p>
-              <ul className="max-h-52 space-y-0 overflow-auto text-[11px] leading-snug text-zinc-700">
-                {ranked.map((r, idx) => (
-                  <li key={r.areaId} className="border-b border-zinc-100 last:border-0">
-                    <button
-                      type="button"
-                      className="w-full rounded px-1 py-1.5 text-left transition-colors hover:bg-sky-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-sky-500"
-                      onClick={() => focusRankedAreaOnMap(r)}
-                    >
-                      <span className="flex items-start gap-2">
-                        <span className="w-5 shrink-0 pt-0.5 text-right font-mono text-[10px] text-zinc-400 tabular-nums">
-                          {idx + 1}.
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="font-medium text-zinc-900">
-                            {r.name.trim() ? r.name.trim() : `Area ${r.areaId.slice(0, 6)}`}
-                          </span>
-                          <span className="text-zinc-600">
-                            {" · score "}
-                            <strong className="text-zinc-900">{r.score}</strong>
-                            {r.wind ? (
-                              <>
-                                {" · "}
-                                {r.wind.speedMs != null ? `${r.wind.speedMs.toFixed(1)} m/s` : "—"}
-                                {r.wind.gustMs != null ? ` (g ${r.wind.gustMs.toFixed(1)})` : ""}
-                                {" from "}
-                                {cardinalFromDeg(r.wind.dirFromDeg)}
-                                {r.wind.dirFromDeg != null ? ` ${Math.round(r.wind.dirFromDeg)}°` : ""}
-                              </>
-                            ) : (
-                              <span className="text-zinc-400"> · no forecast</span>
-                            )}
-                          </span>
-                        </span>
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : (
-            <p className="text-[10px] text-zinc-500">
-              {isAuthed
-                ? "No ranked areas yet — add a practice polygon or mark an area public."
-                : "No public areas for this sport yet — check the other sport or sign in to explore private spots you have saved."}
-            </p>
-          )}
-        </CollapsibleSection>
-
-        <CollapsibleSection
           title="Account"
           summary={
             sessionPending
@@ -1318,7 +1759,7 @@ export function MapHub() {
               {msg && <p className="text-xs text-zinc-600">{msg}</p>}
               <button
                 type="button"
-                className="text-left text-xs text-blue-600 underline"
+                className="text-left text-xs font-medium text-teal-700 underline decoration-teal-700/50 underline-offset-2 hover:text-teal-900"
                 onClick={() => void signOut({ callbackUrl: "/login" })}
               >
                 Sign out
@@ -1326,17 +1767,44 @@ export function MapHub() {
             </>
           ) : (
             <p className="text-xs leading-snug text-zinc-600">
-              <Link href="/login" className="font-medium text-blue-600 underline">
+              <Link
+                href="/login"
+                className="font-medium text-teal-700 underline decoration-teal-700/50 underline-offset-2 hover:text-teal-900"
+              >
                 Sign in
               </Link>{" "}
               to save practice areas, draw polygons, and log sessions.
             </p>
           )}
         </CollapsibleSection>
+              </>
+            )}
+          </div>
+          <nav
+            className="shrink-0 border-t border-teal-900/10 bg-white/60 px-2 py-2 text-center text-[10px] text-zinc-500 backdrop-blur-sm"
+            aria-label="Legal"
+          >
+            <Link
+              href="/terms"
+              className="font-medium text-teal-700/95 hover:text-teal-900 hover:underline"
+            >
+              Terms of use
+            </Link>
+            <span className="text-zinc-400" aria-hidden>
+              {" · "}
+            </span>
+            <Link
+              href="/privacy"
+              className="font-medium text-teal-700/95 hover:text-teal-900 hover:underline"
+            >
+              Privacy &amp; GDPR
+            </Link>
+          </nav>
+        </div>
       </div>
 
       {terrainClick && (
-        <div className="absolute bottom-2 left-2 z-10 max-w-xs rounded bg-white/95 p-2 text-xs shadow">
+        <div className="absolute bottom-2 left-2 z-10 max-w-xs rounded-2xl border border-teal-900/10 bg-white/95 p-3 text-xs shadow-lg shadow-teal-900/10 backdrop-blur-sm">
           <div className="flex justify-between gap-2">
             <span className="font-medium">Terrain</span>
             <button
@@ -1939,7 +2407,7 @@ function PracticeAreaEditPanel({
       : "Not set";
 
   return (
-    <div className="absolute right-2 top-2 z-10 w-80 max-h-[85vh] overflow-auto rounded bg-white p-3 text-sm shadow">
+    <div className="absolute right-2 top-2 z-10 w-80 max-h-[85vh] overflow-auto rounded-2xl border border-teal-900/10 bg-white/95 p-3 text-sm shadow-xl shadow-teal-900/10 backdrop-blur-md">
       <div className="mb-2 flex justify-between gap-2">
         <div className="min-w-0 flex-1">
           <span className="font-medium">{isOwn ? "Edit area" : "Area"}</span>

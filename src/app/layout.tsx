@@ -13,10 +13,23 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const metadataBase = new URL(process.env.AUTH_URL ?? "http://localhost:3000");
+
 export const metadata: Metadata = {
+  metadataBase,
   title: "Fjell Lift",
   description:
     "Kite ski & kite surf — fjell + lift: practice areas, forecast ranking, session memories.",
+  icons: {
+    icon: [{ url: "/icon.png", type: "image/png" }],
+    apple: [{ url: "/apple-icon.png", type: "image/png" }],
+  },
+  openGraph: {
+    title: "Fjell Lift",
+    description:
+      "Kite ski & kite surf — fjell + lift: practice areas, forecast ranking, session memories.",
+    images: [{ url: "/brand/fjell-lift-logo.png", alt: "Fjell Lift" }],
+  },
 };
 
 export default function RootLayout({
