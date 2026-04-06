@@ -1,7 +1,7 @@
 # Render Blueprint — https://render.com/docs/blueprint-spec
 #
 # On first apply, Render will:
-# - Create Postgres `fjelllift-db` and inject DATABASE_URL into the web service
+# - Create Postgres `fjelllift-frankfurt` (EU) and inject DATABASE_URL into the web service
 # - Generate AUTH_SECRET and CRON_SECRET
 # - Prompt only for email (SMTP) variables you still must supply (no mail on Render by default)
 #
@@ -26,7 +26,7 @@ services:
         value: "true"
       - key: DATABASE_URL
         fromDatabase:
-          name: fjelllift-db
+          name: fjelllift-frankfurt
           property: connectionString
       - key: AUTH_SECRET
         generateValue: true
@@ -50,7 +50,9 @@ services:
     # GitHub Actions: RENDER_DEPLOY_HOOK_URL — see README
 
 databases:
-  - name: fjelllift-db
+  # Region is fixed when the instance is created. Renaming forces a new DB in Frankfurt if an
+  # older blueprint omitted `region` and Render defaulted to Oregon.
+  - name: fjelllift-frankfurt
     region: frankfurt
     databaseName: wind_sport
     user: wind
