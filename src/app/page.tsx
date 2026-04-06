@@ -24,6 +24,11 @@ export default function Home() {
         Draw practice areas, log session experiences (when and where you went), pull weather
         (Open-Meteo + FMI stub), and rank spots on a forecast timeline.
       </p>
+      <p className="rounded-2xl border border-amber-200/90 bg-amber-50/90 px-4 py-3 text-sm leading-snug text-amber-950">
+        <strong className="font-semibold">Alpha release.</strong> Things will change — including data,
+        features, and how the app behaves between updates. Always double-check conditions yourself
+        before heading out.
+      </p>
       <div className="flex flex-wrap gap-3">
         <Link
           href="/map"

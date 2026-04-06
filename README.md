@@ -4,6 +4,8 @@
 
 *(Do your own trademark search before a major launch — we only checked for obvious collisions.)*
 
+> **Alpha.** Fjell Lift is early-stage software. Expect **breaking changes** to features, data models, APIs, and behaviour between releases. Do not rely on it for safety-critical decisions; verify conditions yourself in the field.
+
 Next.js app for kite skiing and kite surfing: **magic-link email auth** (Auth.js), **PostgreSQL + PostGIS** (via Docker locally), **pluggable weather** (FMI stub + **Open-Meteo** fallback), **practice areas** you draw on a **MapLibre** map, **session experiences** you log (date, time, area, how it felt), **forecast timeline ranking** with a small boost when past “good” sessions match similar wind, and heuristic **session scoring**.
 
 ## Prerequisites
