@@ -17,7 +17,7 @@ const resendKey = process.env.RESEND_API_KEY?.trim();
 const emailFrom =
   process.env.RESEND_FROM?.trim() ||
   process.env.EMAIL_FROM?.trim() ||
-  "Fjell Lift <noreply@localhost>";
+  "Fjell Lift <noreply@fjelllift.com>";
 
 const emailProvider = resendKey
   ? Resend({

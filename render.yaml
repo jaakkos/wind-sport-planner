@@ -41,7 +41,7 @@ services:
       - key: RESEND_API_KEY
         sync: false
       - key: RESEND_FROM
-        sync: false
+        value: "Fjell Lift <noreply@fjelllift.com>"
       # Optional: MapTiler Outdoor basemap on /map (see README)
       - key: NEXT_PUBLIC_MAPTILER_API_KEY
         sync: false
