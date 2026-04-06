@@ -132,7 +132,7 @@ export default function PrivacyPage() {
                 the application and PostgreSQL.
               </li>
               <li>
-                <strong>Email delivery</strong> (SMTP / transactional email provider) for magic
+                <strong>Email delivery</strong> (e.g. Resend HTTP API or local SMTP/Mailpit) for magic
                 links.
               </li>
               <li>
