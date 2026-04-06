@@ -1,0 +1,46 @@
+# Render Blueprint — adjust repo URL and branch for your account.
+# Docs: https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: fjelllift
+    runtime: node
+    plan: starter
+    region: frankfurt
+    # Build does not need DB access. Migrations run in preDeployCommand (DATABASE_URL is guaranteed there).
+    buildCommand: npm ci && npm run build
+    preDeployCommand: npx prisma migrate deploy
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: 20.19.0
+      - key: AUTH_TRUST_HOST
+        value: "true"
+      - key: DATABASE_URL
+        sync: false
+      - key: AUTH_SECRET
+        sync: false
+      - key: AUTH_URL
+        sync: false
+      - key: EMAIL_SERVER_HOST
+        sync: false
+      - key: EMAIL_SERVER_PORT
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: CRON_SECRET
+        sync: false
+      # Optional: MapTiler Outdoor basemap on /map (see README)
+      - key: NEXT_PUBLIC_MAPTILER_API_KEY
+        sync: false
+    # Optional: Cron Job calling POST /api/cron/sync with Authorization: Bearer CRON_SECRET (reserved / noop for now)
+    #
+    # GitHub Actions: after tests pass on main, CI can POST a Render Deploy Hook if you set repo secret RENDER_DEPLOY_HOOK_URL.
+    # If you use that, disable duplicate auto-deploy on every commit in the Render service settings (or omit the secret).
+
+databases:
+  - name: fjelllift-db
+    databaseName: wind_sport
+    user: wind
+    plan: basic-256mb

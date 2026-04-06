@@ -1,0 +1,310 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --- Auth.js ---
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique @db.Citext
+  emailVerified DateTime?
+  image         String?
+
+  accounts           Account[]
+  sessions           Session[]
+  activities         Activity[]
+  practiceAreas      PracticeArea[]
+  spots              Spot[]
+  sessionExperiences SessionExperience[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String? @db.Text
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// --- Domain ---
+enum Sport {
+  kiteski
+  kitesurf
+}
+
+enum SportSource {
+  strava
+  inferred
+  user_override
+}
+
+enum SessionOutcome {
+  would_not_repeat
+  marginal
+  good
+  excellent
+}
+
+enum SessionSuitability {
+  unsuitable
+  marginal
+  suitable
+  ideal
+}
+
+enum FeltWindStrength {
+  low
+  medium
+  high
+  very_high
+}
+
+enum FeltWindDirection {
+  N
+  NNE
+  NE
+  ENE
+  E
+  ESE
+  SE
+  SSE
+  S
+  SSW
+  SW
+  WSW
+  W
+  WNW
+  NW
+  NNW
+}
+
+enum Gustiness {
+  steady
+  moderate_gusts
+  strong_gusts
+}
+
+enum VisibilityCond {
+  poor
+  ok
+  good
+}
+
+enum SnowSurface {
+  hard_icy
+  packed
+  soft
+  variable
+}
+
+enum WaterConditions {
+  flat
+  chop
+  waves_small
+  waves_large
+}
+
+enum WaveHeightBand {
+  ankle
+  waist
+  overhead
+}
+
+enum AreaLabelPreset {
+  primary
+  lakes
+  coast
+  backup
+  other
+}
+
+model Activity {
+  id                String   @id @default(cuid())
+  userId            String
+  stravaActivityId  String
+  name              String
+  stravaSportType   String
+  startDate         DateTime
+  endDate           DateTime?
+  distanceM         Float?
+  movingTimeSec     Int?
+  summaryPolyline   String?  @db.Text
+  mapPolyline       String?  @db.Text
+  startLat          Float?
+  startLng          Float?
+  rawStrava         Json?
+  lastSyncedAt      DateTime @default(now())
+
+  user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  override ActivityOverride?
+  weather  WeatherSnapshot[]
+  windLog  WindLog?
+
+  @@unique([userId, stravaActivityId])
+  @@index([userId, startDate])
+}
+
+model ActivityOverride {
+  id                    String      @id @default(cuid())
+  activityId            String      @unique
+  effectiveSport        Sport?
+  sportSource           SportSource @default(inferred)
+  userOverriddenSport   Boolean     @default(false)
+  hiddenFromMap         Boolean     @default(false)
+  linkedPracticeAreaId  String?
+
+  activity       Activity      @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  practiceArea   PracticeArea? @relation(fields: [linkedPracticeAreaId], references: [id], onDelete: SetNull)
+}
+
+model PracticeArea {
+  id          String            @id @default(cuid())
+  userId      String
+  /// User-visible label on the map and in lists (max ~120 chars in API)
+  name        String            @default("")
+  /// GeoJSON Polygon geometry object: { type: "Polygon", coordinates: [...] }
+  geojson     Json
+  sports      Sport[]
+  labelPreset AreaLabelPreset   @default(other)
+  /// Preferred wind sectors as degrees clockwise from N, pairs [min,max] stored as Json array
+  windSectors Json?
+  /// Meteorological: direction wind comes from (0–360°). Boosts rank when forecast aligns; overrides global optimal when sectors are empty.
+  optimalWindFromDeg Float?
+  /// When true, any signed-in user can see this polygon on the map and in rankings (read-only for non-owners).
+  isPublic Boolean @default(false)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  overrides    ActivityOverride[]
+  experiences  SessionExperience[]
+
+  @@index([userId])
+}
+
+/// User-logged session at a practice area (replaces Strava-linked scoring input).
+model SessionExperience {
+  id        String   @id @default(cuid())
+  userId    String
+  practiceAreaId String
+  sport     Sport
+  /// When the session happened (user’s local intent; stored as absolute instant).
+  occurredAt DateTime
+  /// How suitable conditions felt — drives experience boost when weather buckets match forecast.
+  sessionSuitability SessionSuitability
+
+  /// Open-Meteo archive (or similar) at area centroid near occurredAt
+  windDirDeg   Float?
+  windSpeedMs  Float?
+  gustMs       Float?
+  weatherProviderId  String?
+  weatherObservedAt    DateTime?
+
+  createdAt DateTime @default(now())
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  practiceArea PracticeArea @relation(fields: [practiceAreaId], references: [id], onDelete: Cascade)
+
+  @@index([userId, practiceAreaId])
+  @@index([userId, occurredAt])
+}
+
+model Spot {
+  id          String          @id @default(cuid())
+  userId      String
+  lat         Float
+  lng         Float
+  sports      Sport[]
+  labelPreset AreaLabelPreset @default(other)
+  windSectors Json?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model WeatherSnapshot {
+  id              String   @id @default(cuid())
+  activityId      String
+  providerId      String
+  fetchedAt       DateTime @default(now())
+  lat             Float
+  lng             Float
+  observedAt      DateTime
+  windSpeedMs     Float?
+  windDirDeg      Float?
+  gustMs          Float?
+  temperatureC    Float?
+  rawPayload      Json?
+
+  activity Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+
+  @@index([activityId])
+}
+
+model WindLog {
+  id                 String              @id @default(cuid())
+  activityId         String              @unique
+  sport              Sport
+  sessionOutcome     SessionOutcome
+  sessionSuitability SessionSuitability
+  feltWindStrength   FeltWindStrength
+  feltWindDirection  FeltWindDirection
+  gustiness          Gustiness
+  visibility         VisibilityCond
+  hazardFlags        String[]            @default([])
+  snowSurface        SnowSurface?
+  waterConditions    WaterConditions?
+  waveHeightBand     WaveHeightBand?
+
+  activity Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+}
+
+model ForecastCache {
+  id             String   @id @default(cuid())
+  providerId     String
+  cacheKey       String
+  practiceAreaId String?
+  lat            Float?
+  lng            Float?
+  windowStart    DateTime
+  windowEnd      DateTime
+  payload        Json
+  expiresAt      DateTime
+
+  @@unique([providerId, cacheKey])
+  @@index([expiresAt])
+}
