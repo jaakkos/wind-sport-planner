@@ -13,9 +13,12 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const metadataBase = new URL(
-  process.env.AUTH_URL ?? process.env.RENDER_EXTERNAL_URL ?? "http://localhost:3000",
-);
+// `"" ?? fallback` keeps ""; `new URL("")` throws — treat empty AUTH_URL like unset.
+const publicAppUrl =
+  process.env.AUTH_URL?.trim() ||
+  process.env.RENDER_EXTERNAL_URL?.trim() ||
+  "http://localhost:3000";
+const metadataBase = new URL(publicAppUrl);
 
 export const metadata: Metadata = {
   metadataBase,
