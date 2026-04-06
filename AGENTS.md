@@ -1,6 +1,18 @@
 # Agent instructions — Fjell Lift (wind-sport-planner)
 
-Never mention any AI tools in the commit messages!
+## Git commits — non-negotiable
+
+**Do not mention AI, assistants, or AI-based dev tools anywhere in Git commit metadata.** This applies no matter who or what produced the diff. Treat it as a hard repo rule: violating it is incorrect work, not a stylistic choice.
+
+**In scope (must stay clean):**
+
+- Commit **subject** and **body**
+- **Merge** or **squash** messages you write
+- **Tags** or release notes only if they are generated from commit messages (keep source commits clean)
+
+**Forbidden (examples, not exhaustive):** names or logos of tools (e.g. Cursor, Copilot, ChatGPT, Claude, “AI”, “LLM”), trailers such as `Made-with: …`, `Generated-by: …`, “assisted by …”, or `Co-authored-by:` lines that identify an automated assistant. If you use Git trailers, they must not attribute the change to AI.
+
+**Do instead:** normal, factual messages — what changed and why — in the same tone as hand-written project history. No attribution of the implementation to any product or model.
 
 ## What this repo is
 
