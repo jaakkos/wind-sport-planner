@@ -1,7 +1,5 @@
-"use client";
-
-import { MapHub } from "@/components/MapHub";
+import { MapPageClient } from "./map-page-client";
 
 export default function MapPage() {
-  return <MapHub />;
+  return <MapPageClient />;
 }

@@ -5,7 +5,14 @@ import Image from "next/image";
 import Link from "next/link";
 import { signOut, useSession } from "next-auth/react";
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import MapGL, {
   Layer,
   MapRef,
@@ -237,6 +244,24 @@ type SidebarTab = "plan" | "map" | "you";
 
 const SIDEBAR_TAB_STORAGE = "fjelllift-sidebar-tab";
 
+/**
+ * Tailwind `md` — desktop keeps the floating tools card; mobile uses a map-first sheet.
+ * MapHub is loaded with `dynamic(..., { ssr: false })` from the map route, so the initializer
+ * may read `window` on first paint; `false` is the safe fallback if this component is ever SSR’d.
+ */
+function useMdUp(): boolean {
+  const [matches, setMatches] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(min-width: 768px)").matches : false,
+  );
+  useLayoutEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const onChange = () => setMatches(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return matches;
+}
+
 function toolKeysForTab(tab: SidebarTab): ToolSectionKey[] {
   switch (tab) {
     case "plan":
@@ -400,12 +425,25 @@ export function MapHub() {
     useState<Record<ToolSectionKey, boolean>>(DEFAULT_TOOL_SECTIONS);
 
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>("plan");
+  const isMdUp = useMdUp();
+  const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
+
+  useEffect(() => {
+    if (isMdUp) setMobileToolsOpen(false);
+  }, [isMdUp]);
 
   /** Avoid SSR/client mismatch for `datetime-local` default and similar. */
   const [clientReady, setClientReady] = useState(false);
   useEffect(() => {
     setClientReady(true);
   }, []);
+
+  useEffect(() => {
+    if (isMdUp) return;
+    if (mapMode === "draw" || mapMode === "pickWind") {
+      setMobileToolsOpen(true);
+    }
+  }, [mapMode, isMdUp]);
 
   useEffect(() => {
     try {
@@ -944,9 +982,38 @@ export function MapHub() {
     return `${ranked.length} area(s) · ${rel}${scoringHint}`;
   }, [hoursAhead, ranked.length, sessionPending, isAuthed, rankingForm]);
 
+  const toolsPanelOpen = isMdUp || mobileToolsOpen;
+
   return (
-    <div className="relative h-screen w-full">
-      <div className="absolute left-2 top-2 z-10 flex max-w-[min(24rem,calc(100vw-1rem))] max-h-[92vh] min-h-0 flex-col text-sm">
+    <div className="relative h-dvh min-h-dvh w-full overflow-hidden">
+      {!isMdUp && !mobileToolsOpen ? (
+        <button
+          type="button"
+          className="fixed left-3 top-3 z-20 flex min-h-11 items-center rounded-2xl border border-teal-900/15 bg-white/95 px-4 text-sm font-semibold text-teal-900 shadow-lg shadow-teal-900/10 backdrop-blur-md"
+          onClick={() => setMobileToolsOpen(true)}
+          aria-expanded={false}
+          aria-controls="map-tools-panel"
+        >
+          Tools
+        </button>
+      ) : null}
+      {!isMdUp && mobileToolsOpen ? (
+        <button
+          type="button"
+          className="fixed inset-0 z-10 bg-zinc-900/40"
+          aria-label="Close tools"
+          onClick={() => setMobileToolsOpen(false)}
+        />
+      ) : null}
+      {toolsPanelOpen ? (
+        <div
+          id="map-tools-panel"
+          className={`flex min-h-0 w-[min(24rem,calc(100vw-1rem))] max-w-[min(24rem,calc(100vw-1rem))] flex-col text-sm ${
+            isMdUp
+              ? "absolute left-2 top-2 z-10 max-h-[92dvh]"
+              : "fixed left-2 top-2 z-20 max-h-[calc(100dvh-1rem)] overflow-hidden shadow-2xl"
+          }`}
+        >
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-teal-900/10 bg-white/90 shadow-xl shadow-teal-900/[0.07] backdrop-blur-md">
           <div className="shrink-0 border-b border-teal-900/10 bg-gradient-to-br from-teal-50/90 via-white to-sky-50/35">
             <Link
@@ -993,6 +1060,17 @@ export function MapHub() {
                 </button>
               ))}
             </div>
+            {!isMdUp ? (
+              <div className="mx-2.5 mb-2">
+                <button
+                  type="button"
+                  className="w-full min-h-11 rounded-xl border border-teal-700/25 bg-teal-700 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-800"
+                  onClick={() => setMobileToolsOpen(false)}
+                >
+                  Done — show map
+                </button>
+              </div>
+            ) : null}
             <div className="mx-2.5 mb-2.5 flex flex-wrap items-center justify-end gap-1">
               <button
                 type="button"
@@ -1802,6 +1880,7 @@ export function MapHub() {
           </nav>
         </div>
       </div>
+      ) : null}
 
       {terrainClick && (
         <div className="absolute bottom-2 left-2 z-10 max-w-xs rounded-2xl border border-teal-900/10 bg-white/95 p-3 text-xs shadow-lg shadow-teal-900/10 backdrop-blur-sm">
@@ -1832,7 +1911,8 @@ export function MapHub() {
         </div>
       )}
 
-      <MapGL
+      <div className="absolute inset-0 z-0 min-h-0 [&_.maplibregl-canvas]:outline-none">
+        <MapGL
         ref={mapRef}
         initialViewState={{
           longitude: 16,
@@ -2191,6 +2271,7 @@ export function MapHub() {
           </Source>
         ) : null}
       </MapGL>
+      </div>
 
       {selectedPracticeAreaId && bundle ? (
         <PracticeAreaEditPanel
@@ -2407,7 +2488,7 @@ function PracticeAreaEditPanel({
       : "Not set";
 
   return (
-    <div className="absolute right-2 top-2 z-10 w-80 max-h-[85vh] overflow-auto rounded-2xl border border-teal-900/10 bg-white/95 p-3 text-sm shadow-xl shadow-teal-900/10 backdrop-blur-md">
+    <div className="absolute right-2 top-2 z-30 w-[min(20rem,calc(100vw-1rem))] max-w-[calc(100vw-1rem)] max-h-[min(85dvh,calc(100dvh-5rem))] overflow-auto rounded-2xl border border-teal-900/10 bg-white/95 p-3 text-sm shadow-xl shadow-teal-900/10 backdrop-blur-md md:w-80 md:max-h-[85vh]">
       <div className="mb-2 flex justify-between gap-2">
         <div className="min-w-0 flex-1">
           <span className="font-medium">{isOwn ? "Edit area" : "Area"}</span>
