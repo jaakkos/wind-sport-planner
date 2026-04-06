@@ -1,0 +1,40 @@
+# Queue Dependabot PRs to merge automatically once all required checks are green.
+#
+# Manual setup in GitHub (required):
+# 1. Settings → General → Pull requests → enable **Allow auto-merge**.
+# 2. Settings → Branches → edit protection for `main` → **Require status checks to pass**
+#    → add the check named **Lint, test & build** (see `ci.yml` job `name`).
+# 3. Dependabot: Settings → Code security → enable **Dependabot version updates**
+#    (dependabot.yml) and **Dependabot security updates** as you prefer.
+#
+# This workflow only calls `gh pr merge --auto`; GitHub performs the merge after CI
+# (and any other required checks) succeed. Major semver bumps are skipped so you can
+# review breaking dependency updates by hand (remove that condition to allow majors).
+
+name: Dependabot auto-merge
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  enable-auto-merge:
+    name: Queue merge when checks pass
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    steps:
+      - name: Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Enable auto-merge (not for semver-major)
+        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr merge "${{ github.event.pull_request.number }}" --repo "${{ github.repository }}" --auto --squash
