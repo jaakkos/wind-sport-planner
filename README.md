@@ -150,4 +150,4 @@ To avoid **two deploys** per push, either connect GitHub to Render *or* use the 
 
 ## Licence
 
-MIT (add your own if you prefer). Respect [FMI open data](https://www.fmi.fi/en/open-data-manual) and [Open-Meteo](https://open-meteo.com/) terms.
+Application code is licensed under the [MIT License](LICENSE) (see `LICENSE`). Respect [FMI open data](https://www.fmi.fi/en/open-data-manual) and [Open-Meteo](https://open-meteo.com/) terms for weather data use.
