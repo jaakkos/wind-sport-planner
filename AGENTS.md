@@ -124,3 +124,44 @@ When a deploy fails, the app errors in prod, or you need build/runtime logs, **u
 - `update_environment_variables` only when the user explicitly wants env changes on Render and the new values are agreed (document in PR/commit body, not in code comments).
 
 Do not paste Render API keys or tokens into source files, `AGENTS.md`, or commit messages. Local MCP config stays out of git (see `.gitignore`).
+
+## Cursor Cloud specific instructions
+
+### Services overview
+
+| Service | How to start | Port(s) |
+|---------|-------------|---------|
+| PostGIS (PostgreSQL + PostGIS) | `docker compose up -d` (service `db`) | 5432 |
+| Mailpit (dev email) | `docker compose up -d` (service `mailpit`) | SMTP 1025, UI 8025 |
+| Next.js dev server | `npm run dev` | 3000 |
+
+### Docker in the Cloud VM
+
+Docker is not pre-installed. Install Docker CE, `fuse-overlayfs`, and switch iptables to legacy before starting `dockerd`:
+
+```bash
+sudo dockerd &>/tmp/dockerd.log &
+sudo chmod 666 /var/run/docker.sock
+```
+
+The daemon config at `/etc/docker/daemon.json` must use `fuse-overlayfs` as the storage driver (required by the VM's nested-container kernel).
+
+### Startup sequence (after `npm install` from update script)
+
+1. Start Docker daemon (see above).
+2. `docker compose up -d` — starts PostGIS and Mailpit.
+3. `npx prisma migrate deploy` — applies pending migrations.
+4. `npm run dev` — starts the Next.js dev server on port 3000.
+
+### Environment
+
+- `.env` is created from `.env.example`; set `AUTH_SECRET` (e.g. `openssl rand -base64 32`). `DATABASE_URL` defaults to the docker-compose PostGIS.
+- No external API keys are required for basic development. MapTiler key is optional (OSM/OpenTopoMap fallback works without it).
+
+### Lint / Test / Build
+
+Standard commands per `package.json` scripts — see the **npm scripts** table in the main section above. All three (`npm run lint`, `npm run test`, `npm run build`) should pass cleanly on a fresh setup.
+
+### E2E tests (Playwright)
+
+Require Chromium: `npm run playwright:install` (or `npx playwright install chromium --with-deps`). PostGIS must be running and migrated. Playwright auto-starts `next dev` as the web server.
