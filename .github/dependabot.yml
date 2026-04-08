@@ -9,6 +9,11 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    ignore:
+      # next-auth@5 beta currently requires nodemailer@^7, so major bumps to v8 break npm ci.
+      - dependency-name: "nodemailer"
+        update-types:
+          - "version-update:semver-major"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
