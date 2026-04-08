@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { FeatureCollection } from "geojson";
 import { sectorsFromCenter } from "@/lib/heuristics/windDirection";
 import { areaFeatureId } from "@/lib/map/mapHubHelpers";
+import { AreaForecastSamples } from "./AreaForecastSamples";
 import type { Bundle } from "./types";
 
 const LABEL_PRESETS = ["primary", "lakes", "coast", "backup", "other"] as const;
@@ -11,6 +13,10 @@ export function PracticeAreaEditPanel({
   areaId,
   bundle,
   sectorHalfWidthDeg,
+  forecastAtIso,
+  activeSport,
+  optimalWindHalfWidthDeg,
+  onForecastSamplesMapChange,
   areaWindPickActive,
   onDrawAreaOptimalWind,
   onCancelWindPick,
@@ -21,6 +27,10 @@ export function PracticeAreaEditPanel({
   areaId: string;
   bundle: Bundle;
   sectorHalfWidthDeg: number;
+  forecastAtIso: string;
+  activeSport: "kiteski" | "kitesurf";
+  optimalWindHalfWidthDeg: number;
+  onForecastSamplesMapChange: (fc: FeatureCollection | null) => void;
   areaWindPickActive: boolean;
   onDrawAreaOptimalWind: () => void;
   onCancelWindPick: () => void;
@@ -200,6 +210,16 @@ export function PracticeAreaEditPanel({
           ✕
         </button>
       </div>
+      {feature ? (
+        <AreaForecastSamples
+          key={`${areaId}-${forecastAtIso}-${activeSport}-${optimalWindHalfWidthDeg}`}
+          areaId={areaId}
+          forecastAtIso={forecastAtIso}
+          sport={activeSport}
+          optimalWindHalfWidthDeg={optimalWindHalfWidthDeg}
+          onMapPointsChange={onForecastSamplesMapChange}
+        />
+      ) : null}
       {!feature ? (
         <p className="text-xs text-zinc-600">
           This area is not visible with the current sport filter. Switch sport in the sidebar to
