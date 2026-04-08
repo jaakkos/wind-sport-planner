@@ -1,6 +1,6 @@
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
-import type { Sport } from "@/generated/prisma";
+import type { Sport } from "@/generated/prisma/client";
 import { rankPracticeAreas } from "@/lib/heuristics/rankAreas";
 import { NextResponse } from "next/server";
 

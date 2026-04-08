@@ -2,7 +2,7 @@ import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { centroidLngLatFromGeojson } from "@/lib/practiceArea/centroid";
 import { openMeteoProvider } from "@/lib/weather/providers/openMeteo";
-import type { Sport } from "@/generated/prisma";
+import type { Sport } from "@/generated/prisma/client";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 

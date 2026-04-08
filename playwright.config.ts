@@ -1,7 +1,9 @@
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { config as loadEnv } from "dotenv";
 import { defineConfig, devices } from "@playwright/test";
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 loadEnv({ path: path.resolve(__dirname, ".env.local") });
 loadEnv({ path: path.resolve(__dirname, ".env") });
 

@@ -1,7 +1,7 @@
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
-import type { Sport } from "@/generated/prisma";
-import { AreaLabelPreset } from "@/generated/prisma";
+import type { Sport } from "@/generated/prisma/client";
+import { AreaLabelPreset } from "@/generated/prisma/client";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 

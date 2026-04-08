@@ -1,4 +1,4 @@
-import type { Sport } from "@/generated/prisma";
+import type { Sport } from "@/generated/prisma/client";
 import { WIND_BANDS, type WindBands } from "@/lib/heuristics/profiles";
 import { z } from "zod";
 
