@@ -1,12 +1,11 @@
 import "dotenv/config";
 import { defineConfig } from "prisma/config";
+import { resolveDatabaseUrl } from "./src/lib/database-url";
 
 // Render (and other hosts) often omit DATABASE_URL during `npm run build` even
 // though `prisma generate` never connects.  Migrations and the running app
 // always use the real URL from the environment when it is set.
-const databaseUrl =
-  process.env.DATABASE_URL ??
-  "postgresql://build:build@127.0.0.1:5432/build?schema=public";
+const databaseUrl = resolveDatabaseUrl();
 
 export default defineConfig({
   schema: "prisma/schema.prisma",
