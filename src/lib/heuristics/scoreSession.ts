@@ -1,4 +1,4 @@
-import type { Sport, WindLog } from "@/generated/prisma";
+import type { Sport, WindLog } from "@/generated/prisma/client";
 import { gustPenalty, windFitScore } from "@/lib/heuristics/profiles";
 
 export function scoreSession(args: {

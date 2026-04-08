@@ -1,6 +1,6 @@
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
-import { Prisma } from "@/generated/prisma";
+import { Prisma } from "@/generated/prisma/client";
 import type { RankingPreferencesDoc } from "@/lib/heuristics/rankingPreferences";
 import {
   defaultRankingPreferencesResponse,

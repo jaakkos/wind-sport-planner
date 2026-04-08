@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { WindLog } from "@/generated/prisma";
+import type { WindLog } from "@/generated/prisma/client";
 import { scoreSession } from "@/lib/heuristics/scoreSession";
 
 const baseLog = {

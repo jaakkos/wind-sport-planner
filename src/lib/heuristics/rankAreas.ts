@@ -1,6 +1,6 @@
 import centroid from "@turf/centroid";
 import type { Feature, Polygon } from "geojson";
-import type { PracticeArea, Sport } from "@/generated/prisma";
+import type { PracticeArea, Sport } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
 import { fetchElevationOpenMeteoM } from "@/lib/weather/elevationOpenMeteo";
 import { metNoPreferredRegion } from "@/lib/weather/providers/metNo";

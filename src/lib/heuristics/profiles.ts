@@ -1,4 +1,4 @@
-import type { Sport } from "@/generated/prisma";
+import type { Sport } from "@/generated/prisma/client";
 
 export type WindBands = { minMs: number; maxMs: number; idealMin: number; idealMax: number };
 
