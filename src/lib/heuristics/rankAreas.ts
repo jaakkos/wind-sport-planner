@@ -2,22 +2,40 @@ import centroid from "@turf/centroid";
 import type { Feature, Polygon } from "geojson";
 import type { PracticeArea, Sport } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
+import { sampleWindFieldOrigins } from "@/lib/map/mapHubHelpers";
 import { fetchElevationOpenMeteoM } from "@/lib/weather/elevationOpenMeteo";
 import { metNoPreferredRegion } from "@/lib/weather/providers/metNo";
 import { fetchForecastWithRouter } from "@/lib/weather/router";
+import type { NormalizedWind } from "@/lib/weather/types";
 import type {
   RankedPracticeArea,
   RankedPracticeAreaWind,
 } from "@/lib/heuristics/rankAreaTypes";
+import {
+  aggregateMultiPointWinds,
+  elevationRangeInsidePolygonM,
+  effectiveSamplePointCount,
+  multiPointDirectionMultiplier,
+  pickHourClosestTo,
+  polygonBboxDiagonalKm,
+} from "@/lib/heuristics/multiPointForecast";
 import { directionRankFactor } from "@/lib/heuristics/windDirection";
 import type { ResolvedSportRankingOptions } from "@/lib/heuristics/rankingPreferences";
 import {
   parseRankingPreferencesDoc,
+  resolveMultiPointForecastPrefs,
   resolveSportRankingOptions,
 } from "@/lib/heuristics/rankingPreferences";
 import { gustPenalty, windFitScore } from "@/lib/heuristics/profiles";
 
 export type { RankedPracticeArea, RankedPracticeAreaWind } from "@/lib/heuristics/rankAreaTypes";
+
+function asPolygon(geojson: unknown): Polygon | null {
+  if (!geojson || typeof geojson !== "object") return null;
+  const g = geojson as { type?: string; coordinates?: unknown };
+  if (g.type !== "Polygon" || !Array.isArray(g.coordinates)) return null;
+  return g as Polygon;
+}
 
 function areaCentroid(geojson: unknown): { lat: number; lng: number } | null {
   try {
@@ -36,7 +54,7 @@ function areaCentroid(geojson: unknown): { lat: number; lng: number } | null {
 
 function hourBucket(deg: number | null) {
   if (deg == null) return -1;
-  return Math.floor(((deg % 360) + 360) % 360 / 45);
+  return Math.floor((((deg % 360) + 360) % 360) / 45);
 }
 
 async function experienceBoost(
@@ -82,6 +100,27 @@ function forecastFetchWindow(at: Date): { from: Date; to: Date } {
   return { from, to };
 }
 
+type ForecastSeriesResult = Awaited<ReturnType<typeof fetchForecastWithRouter>>;
+
+async function getForecastCached(
+  lat: number,
+  lng: number,
+  altitudeM: number | null,
+  windowFrom: Date,
+  windowTo: Date,
+  cache: Map<string, ForecastSeriesResult>,
+): Promise<ForecastSeriesResult> {
+  const key = `${lat.toFixed(4)},${lng.toFixed(4)},${altitudeM == null ? "x" : Math.round(altitudeM)},${windowFrom.getTime()},${windowTo.getTime()}`;
+  let v = cache.get(key);
+  if (v === undefined) {
+    v = await fetchForecastWithRouter(lat, lng, windowFrom, windowTo, {
+      altitudeM,
+    });
+    cache.set(key, v);
+  }
+  return v;
+}
+
 export async function rankPracticeAreas(args: {
   /** When null (anonymous), experience-based boost is skipped. */
   userId: string | null;
@@ -94,20 +133,22 @@ export async function rankPracticeAreas(args: {
   rankingPreferencesJson?: unknown;
 }): Promise<RankedPracticeArea[]> {
   const halfW =
-    args.optimalMatchHalfWidthDeg != null && Number.isFinite(args.optimalMatchHalfWidthDeg)
+    args.optimalMatchHalfWidthDeg != null &&
+    Number.isFinite(args.optimalMatchHalfWidthDeg)
       ? Math.min(90, Math.max(5, args.optimalMatchHalfWidthDeg))
       : 30;
+  const prefsDoc = parseRankingPreferencesDoc(args.rankingPreferencesJson);
   const rankOpts =
     args.rankingOptions ??
-    resolveSportRankingOptions(
-      args.sport,
-      parseRankingPreferencesDoc(args.rankingPreferencesJson) ?? undefined,
-    );
+    resolveSportRankingOptions(args.sport, prefsDoc ?? undefined);
+  const mpPrefs = resolveMultiPointForecastPrefs(prefsDoc, args.userId != null);
   const { from: windowFrom, to: windowTo } = forecastFetchWindow(args.at);
+  const targetMs = args.at.getTime();
 
   const elevationCache = new Map<string, number | null>();
+  const forecastCache = new Map<string, ForecastSeriesResult>();
 
-  async function elevationForCentroid(lat: number, lng: number): Promise<number | null> {
+  async function elevationForPoint(lat: number, lng: number): Promise<number | null> {
     const key = `${lat.toFixed(4)},${lng.toFixed(4)}`;
     if (elevationCache.has(key)) return elevationCache.get(key) ?? null;
     const m = await fetchElevationOpenMeteoM(lat, lng);
@@ -122,17 +163,68 @@ export async function rankPracticeAreas(args: {
     const c = areaCentroid(area.geojson);
     if (!c) continue;
 
-    const altitudeM = metNoPreferredRegion(c.lat, c.lng)
-      ? await elevationForCentroid(c.lat, c.lng)
-      : null;
-    const fc = await fetchForecastWithRouter(c.lat, c.lng, windowFrom, windowTo, {
-      altitudeM,
+    const poly = asPolygon(area.geojson);
+    let bboxDiagKm = 0;
+    let elevRangeM = 0;
+    if (poly) {
+      bboxDiagKm = polygonBboxDiagonalKm(poly);
+      if (mpPrefs.mode !== "off") {
+        elevRangeM = await elevationRangeInsidePolygonM(
+          poly,
+          c.lng,
+          c.lat,
+          elevationForPoint,
+          12,
+        );
+      }
+    }
+
+    const candidatePts = poly
+      ? sampleWindFieldOrigins(poly, c.lng, c.lat, mpPrefs.maxSamples)
+      : [[c.lng, c.lat] as [number, number]];
+
+    const k = effectiveSamplePointCount({
+      mode: mpPrefs.mode,
+      maxSamples: mpPrefs.maxSamples,
+      bboxDiagonalKm: bboxDiagKm,
+      elevRangeM,
+      availablePoints: candidatePts.length,
     });
+
+    const points: [number, number][] =
+      k <= 1 ? [[c.lng, c.lat]] : candidatePts.slice(0, k);
+
+    const samplesAtHour: NormalizedWind[] = [];
+    let providerId: string | null = null;
+
+    for (const [lng, lat] of points) {
+      const altitudeM = metNoPreferredRegion(lat, lng)
+        ? await elevationForPoint(lat, lng)
+        : null;
+      const fc = await getForecastCached(
+        lat,
+        lng,
+        altitudeM,
+        windowFrom,
+        windowTo,
+        forecastCache,
+      );
+      providerId = fc?.providerId ?? providerId;
+      if (!fc?.hourly.length) continue;
+      const best = pickHourClosestTo(fc.hourly, targetMs);
+      if (best) samplesAtHour.push(best);
+    }
+
     const breakdown: Record<string, unknown> = {
-      providerId: fc?.providerId ?? null,
-      altitudeM: altitudeM ?? null,
+      providerId,
+      multiPointMode: mpPrefs.mode,
+      multiPointPolicy: mpPrefs.scoringPolicy,
+      bboxDiagonalKm: bboxDiagKm,
+      elevRangeM,
+      forecastSamplePoints: samplesAtHour.length,
     };
-    if (!fc?.hourly.length) {
+
+    if (samplesAtHour.length === 0) {
       results.push({
         areaId: area.id,
         name: area.name,
@@ -144,19 +236,96 @@ export async function rankPracticeAreas(args: {
       continue;
     }
 
-    let best = fc.hourly[0];
-    let bestDiff = Infinity;
-    const target = args.at.getTime();
-    for (const h of fc.hourly) {
-      const d = Math.abs(h.observedAt.getTime() - target);
-      if (d < bestDiff) {
-        bestDiff = d;
-        best = h;
+    const dirArgs = {
+      areaWindSectorsJson: area.windSectors,
+      areaOptimalWindFromDeg: area.optimalWindFromDeg,
+      optimalMatchHalfWidthDeg: halfW,
+    };
+
+    let best: NormalizedWind;
+    let fitSpeedMs: number | null;
+    let gustForPenaltyMs: number | null;
+    let refSpeedForGustMs: number | null;
+    let dirFactor: number;
+    let wind: RankedPracticeAreaWind;
+
+    if (samplesAtHour.length === 1) {
+      best = samplesAtHour[0]!;
+      fitSpeedMs = best.windSpeedMs;
+      gustForPenaltyMs = best.gustMs;
+      refSpeedForGustMs = best.windSpeedMs;
+      dirFactor = directionRankFactor({
+        ...dirArgs,
+        forecastWindFromDeg: best.windDirDeg ?? null,
+      });
+      wind = {
+        speedMs: best.windSpeedMs,
+        gustMs: best.gustMs,
+        dirFromDeg: best.windDirDeg,
+        visibilityM: best.visibilityM,
+        observedAt: best.observedAt.toISOString(),
+      };
+    } else {
+      const agg = aggregateMultiPointWinds(samplesAtHour, mpPrefs.scoringPolicy);
+      if (!agg) {
+        results.push({
+          areaId: area.id,
+          name: area.name,
+          score: 0,
+          centroid: { lat: c.lat, lng: c.lng },
+          wind: null,
+          breakdown: { ...breakdown, reason: "aggregate_failed" },
+        });
+        continue;
       }
+      best = agg.display;
+      fitSpeedMs = agg.fitSpeedMs;
+      gustForPenaltyMs = agg.gustPenaltyGustMs;
+      refSpeedForGustMs = agg.gustPenaltyRefSpeedMs;
+      const factors = samplesAtHour.map((s) =>
+        directionRankFactor({
+          ...dirArgs,
+          forecastWindFromDeg: s.windDirDeg ?? null,
+        }),
+      );
+      const meanDir = best.windDirDeg ?? null;
+      const factorMean = directionRankFactor({
+        ...dirArgs,
+        forecastWindFromDeg: meanDir,
+      });
+      dirFactor = multiPointDirectionMultiplier(
+        mpPrefs.scoringPolicy,
+        factors,
+        factorMean,
+      );
+      wind = {
+        speedMs: best.windSpeedMs,
+        gustMs: best.gustMs,
+        dirFromDeg: best.windDirDeg,
+        visibilityM: best.visibilityM,
+        observedAt: best.observedAt.toISOString(),
+        multiPoint: {
+          samples: agg.summary.samples,
+          speedMinMs: agg.summary.speedMinMs,
+          speedMaxMs: agg.summary.speedMaxMs,
+          speedMedianMs: agg.summary.speedMedianMs,
+          gustMaxMs: agg.summary.gustMaxMs,
+          dirSpreadDeg: agg.summary.dirSpreadDeg,
+        },
+      };
+      breakdown.multiPointSummary = agg.summary;
     }
 
-    const fit = windFitScore(args.sport, best.windSpeedMs, rankOpts.bands);
-    const gp = gustPenalty(best.gustMs, best.windSpeedMs, rankOpts.gustPenaltyScale);
+    breakdown.windSpeedMs = best.windSpeedMs;
+    breakdown.windDirDeg = best.windDirDeg;
+    breakdown.visibilityM = best.visibilityM;
+
+    const fit = windFitScore(args.sport, fitSpeedMs, rankOpts.bands);
+    const gp = gustPenalty(
+      gustForPenaltyMs,
+      refSpeedForGustMs,
+      rankOpts.gustPenaltyScale,
+    );
     let score = Math.max(0, fit.score * rankOpts.windFitScale - gp);
     const boost = await experienceBoost(
       args.userId,
@@ -166,15 +335,6 @@ export async function rankPracticeAreas(args: {
       best.windSpeedMs,
     );
     breakdown.experienceBoost = boost;
-    breakdown.windSpeedMs = best.windSpeedMs;
-    breakdown.windDirDeg = best.windDirDeg;
-    breakdown.visibilityM = best.visibilityM;
-    const dirFactor = directionRankFactor({
-      forecastWindFromDeg: best.windDirDeg ?? null,
-      areaWindSectorsJson: area.windSectors,
-      areaOptimalWindFromDeg: area.optimalWindFromDeg,
-      optimalMatchHalfWidthDeg: halfW,
-    });
     breakdown.directionFactor = dirFactor;
     breakdown.areaOptimalWindFromDeg = area.optimalWindFromDeg;
     breakdown.optimalMatchHalfWidthDeg = halfW;
@@ -185,14 +345,6 @@ export async function rankPracticeAreas(args: {
     const dirEff = 1 + (dirFactor - 1) * rankOpts.directionEmphasis;
     breakdown.directionEffective = dirEff;
     score = Math.round(Math.min(100, score * boost * dirEff));
-
-    const wind: RankedPracticeAreaWind = {
-      speedMs: best.windSpeedMs,
-      gustMs: best.gustMs,
-      dirFromDeg: best.windDirDeg,
-      visibilityM: best.visibilityM,
-      observedAt: best.observedAt.toISOString(),
-    };
 
     results.push({
       areaId: area.id,

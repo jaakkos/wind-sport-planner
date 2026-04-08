@@ -16,15 +16,79 @@ export const sportRankingPrefsSchema = z.object({
   directionEmphasis: z.number().min(0).max(1).optional(),
 });
 
+export const multiPointForecastPrefsSchema = z
+  .object({
+    /** `off` = centroid only. `auto` = multi when area is large or relief is high. `on` = always sample up to maxSamples. */
+    mode: z.enum(["off", "auto", "on"]).optional(),
+    /** Forecast locations per area (clamped 3–9). */
+    maxSamples: z.number().int().min(3).max(9).optional(),
+    /** How multi-sample wind collapses into score (logged-in only; guests use conservative + smaller cap). */
+    scoringPolicy: z.enum(["representative", "conservative"]).optional(),
+  })
+  .strict();
+
 export const rankingPreferencesDocSchema = z
   .object({
     kiteski: sportRankingPrefsSchema.optional(),
     kitesurf: sportRankingPrefsSchema.optional(),
+    multiPointForecast: multiPointForecastPrefsSchema.optional(),
   })
   .strict();
 
 export type SportRankingPrefs = z.infer<typeof sportRankingPrefsSchema>;
+export type MultiPointForecastPrefs = z.infer<typeof multiPointForecastPrefsSchema>;
 export type RankingPreferencesDoc = z.infer<typeof rankingPreferencesDocSchema>;
+
+export type MultiPointForecastMode = NonNullable<MultiPointForecastPrefs["mode"]>;
+export type MultiPointScoringPolicy = NonNullable<MultiPointForecastPrefs["scoringPolicy"]>;
+
+export type ResolvedMultiPointForecastPrefs = {
+  mode: MultiPointForecastMode;
+  maxSamples: number;
+  scoringPolicy: MultiPointScoringPolicy;
+};
+
+function clamp(n: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, n));
+}
+
+const MULTI_POINT_DEFAULTS: ResolvedMultiPointForecastPrefs = {
+  mode: "auto",
+  maxSamples: 5,
+  scoringPolicy: "conservative",
+};
+
+/** Guests: tighter API budget; always auto triggers, conservative scoring. */
+const MULTI_POINT_GUEST: ResolvedMultiPointForecastPrefs = {
+  mode: "auto",
+  maxSamples: 4,
+  scoringPolicy: "conservative",
+};
+
+export function resolveMultiPointForecastPrefs(
+  doc: RankingPreferencesDoc | null | undefined,
+  isAuthed: boolean,
+): ResolvedMultiPointForecastPrefs {
+  if (!isAuthed) return { ...MULTI_POINT_GUEST };
+  const mp = doc?.multiPointForecast;
+  return {
+    mode: mp?.mode ?? MULTI_POINT_DEFAULTS.mode,
+    maxSamples: clamp(
+      mp?.maxSamples ?? MULTI_POINT_DEFAULTS.maxSamples,
+      3,
+      9,
+    ),
+    scoringPolicy: mp?.scoringPolicy ?? MULTI_POINT_DEFAULTS.scoringPolicy,
+  };
+}
+
+export function defaultMultiPointForecastPrefsForForm(): MultiPointForecastPrefs {
+  return {
+    mode: MULTI_POINT_DEFAULTS.mode,
+    maxSamples: MULTI_POINT_DEFAULTS.maxSamples,
+    scoringPolicy: MULTI_POINT_DEFAULTS.scoringPolicy,
+  };
+}
 
 export type ResolvedSportRankingOptions = {
   bands: WindBands;
@@ -32,10 +96,6 @@ export type ResolvedSportRankingOptions = {
   gustPenaltyScale: number;
   directionEmphasis: number;
 };
-
-function clamp(n: number, lo: number, hi: number): number {
-  return Math.min(hi, Math.max(lo, n));
-}
 
 /** Merge saved prefs with defaults into bands safe for scoring. */
 export function resolveBands(sport: Sport, prefs: SportRankingPrefs | undefined): WindBands {
@@ -81,6 +141,7 @@ export function parseRankingPreferencesDoc(raw: unknown): RankingPreferencesDoc 
 
 export function defaultRankingPreferencesResponse(): {
   defaults: Record<Sport, SportRankingPrefs & { bands: WindBands }>;
+  multiPointForecast: ResolvedMultiPointForecastPrefs;
 } {
   const sports: Sport[] = ["kiteski", "kitesurf"];
   const defaults = {} as Record<Sport, SportRankingPrefs & { bands: WindBands }>;
@@ -97,5 +158,5 @@ export function defaultRankingPreferencesResponse(): {
       directionEmphasis: 1,
     };
   }
-  return { defaults };
+  return { defaults, multiPointForecast: { ...MULTI_POINT_DEFAULTS } };
 }

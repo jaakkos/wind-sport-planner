@@ -30,6 +30,10 @@ import {
   cssRotateEastBaseToWindTo,
   windToDegFromDirFrom,
 } from "@/lib/map/windArrowDisplay";
+import {
+  ensureWindFieldArrowImage,
+  WIND_FIELD_ARROW_IMAGE_ID,
+} from "@/lib/map/windFieldArrowIcon";
 import { clampArrowLengthInsidePolygon } from "@/lib/map/windArrowLength";
 import { sectorsFromCenter } from "@/lib/heuristics/windDirection";
 
@@ -83,10 +87,17 @@ type SportRankingFormState = {
   directionEmphasis: number;
 };
 
+type MultiPointForecastFormState = {
+  mode: "off" | "auto" | "on";
+  maxSamples: number;
+  scoringPolicy: "representative" | "conservative";
+};
+
 type RankingPrefsApiResponse = {
   doc: {
     kiteski?: Partial<SportRankingFormState>;
     kitesurf?: Partial<SportRankingFormState>;
+    multiPointForecast?: Partial<MultiPointForecastFormState>;
   } | null;
   defaults: Record<
     "kiteski" | "kitesurf",
@@ -94,6 +105,7 @@ type RankingPrefsApiResponse = {
       bands: { minMs: number; maxMs: number; idealMin: number; idealMax: number };
     }
   >;
+  multiPointForecast: MultiPointForecastFormState;
 };
 
 function sportFormFromDefaults(
@@ -208,6 +220,25 @@ function windCompactSummary(w: {
   return deg != null ? `${windPart} ${fromC} (${deg}°)` : `${windPart} ${fromC}`;
 }
 
+/** Second line when multi-spot forecast was used inside the polygon. */
+function windMultiPointSubtitle(w: RankedPracticeArea["wind"]): string | null {
+  const mp = w?.multiPoint;
+  if (!mp || mp.samples < 2) return null;
+  const bits: string[] = [];
+  if (
+    mp.speedMinMs != null &&
+    mp.speedMaxMs != null &&
+    Math.round(mp.speedMinMs) !== Math.round(mp.speedMaxMs)
+  ) {
+    bits.push(`${Math.round(mp.speedMinMs)}–${Math.round(mp.speedMaxMs)} m/s in area`);
+  }
+  bits.push(`${mp.samples} spots`);
+  if (mp.dirSpreadDeg != null && mp.dirSpreadDeg >= 12) {
+    bits.push(`dir ±${Math.round(mp.dirSpreadDeg)}°`);
+  }
+  return bits.join(" · ");
+}
+
 /** Great-circle distance in km (for wind-arrow preview length). */
 function haversineKm(lng1: number, lat1: number, lng2: number, lat2: number): number {
   const R = 6371;
@@ -256,11 +287,6 @@ function metersPerPixelAtLatitude(latDeg: number, zoom: number): number {
 
 function kmToScreenPx(km: number, latDeg: number, zoom: number): number {
   return (km * 1000) / metersPerPixelAtLatitude(latDeg, zoom);
-}
-
-function windFieldArrowScale(zoom: number): number {
-  const z = Math.max(1, Math.min(19, zoom));
-  return Math.min(2.35, Math.max(0.62, 0.58 * Math.pow(1.14, z - 9.5)));
 }
 
 const FORECAST_SLIDER_MAX_H = 120;
@@ -417,6 +443,8 @@ export function MapHub() {
   }, [sessionPending, isAuthed]);
 
   const mapRef = useRef<MapRef>(null);
+  /** Bumps on map `load` so effects can re-sync icons after the map instance exists. */
+  const [mapEpoch, setMapEpoch] = useState(0);
   const [mapZoom, setMapZoom] = useState(5);
   const [basemap, setBasemap] = useState<BasemapId>("hybrid");
   const [reliefOpacity, setReliefOpacity] = useState(0.42);
@@ -450,6 +478,9 @@ export function MapHub() {
     kiteski: SportRankingFormState;
     kitesurf: SportRankingFormState;
   } | null>(null);
+  const [multiPointForm, setMultiPointForm] = useState<MultiPointForecastFormState | null>(
+    null,
+  );
   const [rankingPrefsLoading, setRankingPrefsLoading] = useState(false);
   const [toolSectionsOpen, setToolSectionsOpen] =
     useState<Record<ToolSectionKey, boolean>>(DEFAULT_TOOL_SECTIONS);
@@ -553,12 +584,20 @@ export function MapHub() {
       const r = await fetch("/api/user/ranking-preferences");
       if (!r.ok) {
         setRankingForm(null);
+        setMultiPointForm(null);
         return;
       }
       const j = (await r.json()) as RankingPrefsApiResponse;
+      const dmp = j.doc?.multiPointForecast;
+      const defMp = j.multiPointForecast;
       setRankingForm({
         kiteski: sportFormFromDefaults("kiteski", j.doc, j.defaults),
         kitesurf: sportFormFromDefaults("kitesurf", j.doc, j.defaults),
+      });
+      setMultiPointForm({
+        mode: dmp?.mode ?? defMp.mode,
+        maxSamples: dmp?.maxSamples ?? defMp.maxSamples,
+        scoringPolicy: dmp?.scoringPolicy ?? defMp.scoringPolicy,
       });
     } finally {
       setRankingPrefsLoading(false);
@@ -569,6 +608,7 @@ export function MapHub() {
     if (sessionPending) return;
     if (!isAuthed) {
       setRankingForm(null);
+      setMultiPointForm(null);
       return;
     }
     void loadRankingPrefs();
@@ -594,13 +634,16 @@ export function MapHub() {
     });
     q.set("optimalWindHalfWidthDeg", String(optimalWindHalfWidthDeg));
     const r = await fetch(`/api/forecast/rank?${q.toString()}`);
-    if (!r.ok) return;
+    if (!r.ok) {
+      setMsg(`Forecast ranking failed (${r.status}). Wind overlays may be missing.`);
+      return;
+    }
     const j = (await r.json()) as { ranked: RankedPracticeArea[] };
     setRanked(j.ranked ?? []);
   }, [activeSport, forecastAtIso, optimalWindHalfWidthDeg]);
 
   const saveRankingPrefsForActiveSport = useCallback(async () => {
-    if (!rankingForm) return;
+    if (!rankingForm || !multiPointForm) return;
     const s = activeSport;
     const f = rankingForm[s];
     const r = await fetch("/api/user/ranking-preferences", {
@@ -616,6 +659,11 @@ export function MapHub() {
           gustPenaltyScale: f.gustPenaltyScale,
           directionEmphasis: f.directionEmphasis,
         },
+        multiPointForecast: {
+          mode: multiPointForm.mode,
+          maxSamples: multiPointForm.maxSamples,
+          scoringPolicy: multiPointForm.scoringPolicy,
+        },
       }),
     });
     if (!r.ok) {
@@ -624,12 +672,19 @@ export function MapHub() {
     }
     setMsg(null);
     const j = (await r.json()) as RankingPrefsApiResponse;
+    const dmp = j.doc?.multiPointForecast;
+    const defMp = j.multiPointForecast;
     setRankingForm({
       kiteski: sportFormFromDefaults("kiteski", j.doc, j.defaults),
       kitesurf: sportFormFromDefaults("kitesurf", j.doc, j.defaults),
     });
+    setMultiPointForm({
+      mode: dmp?.mode ?? defMp.mode,
+      maxSamples: dmp?.maxSamples ?? defMp.maxSamples,
+      scoringPolicy: dmp?.scoringPolicy ?? defMp.scoringPolicy,
+    });
     await loadRank();
-  }, [rankingForm, activeSport, loadRank]);
+  }, [rankingForm, multiPointForm, activeSport, loadRank]);
 
   const resetRankingPrefsForActiveSport = useCallback(async () => {
     const r = await fetch("/api/user/ranking-preferences", {
@@ -643,9 +698,16 @@ export function MapHub() {
     }
     setMsg(null);
     const j = (await r.json()) as RankingPrefsApiResponse;
+    const dmp = j.doc?.multiPointForecast;
+    const defMp = j.multiPointForecast;
     setRankingForm({
       kiteski: sportFormFromDefaults("kiteski", j.doc, j.defaults),
       kitesurf: sportFormFromDefaults("kitesurf", j.doc, j.defaults),
+    });
+    setMultiPointForm({
+      mode: dmp?.mode ?? defMp.mode,
+      maxSamples: dmp?.maxSamples ?? defMp.maxSamples,
+      scoringPolicy: dmp?.scoringPolicy ?? defMp.scoringPolicy,
     });
     await loadRank();
   }, [activeSport, loadRank]);
@@ -707,39 +769,53 @@ export function MapHub() {
     return features.length ? { type: "FeatureCollection", features } : null;
   }, [bundle]);
 
-  const fieldArrowScale = useMemo(() => windFieldArrowScale(mapZoom), [mapZoom]);
-
-  const windFieldMarkers = useMemo((): { id: string; lng: number; lat: number; windToDeg: number }[] => {
-    const out: { id: string; lng: number; lat: number; windToDeg: number }[] = [];
+  /** Wind field: GeoJSON points under area fill; SVG icon + map rotation in MapLibre symbol layer. */
+  const windFieldArrowsGeoJson = useMemo((): FeatureCollection => {
+    const features: Feature[] = [];
     const polyById = new Map<string, GeoJSON.Polygon>();
     if (bundle?.practiceAreas?.features.length) {
       for (const f of bundle.practiceAreas.features) {
         if (f.geometry?.type !== "Polygon") continue;
-        polyById.set(areaFeatureId(f), f.geometry);
+        const geom = f.geometry;
+        const props = (f.properties ?? {}) as { id?: string };
+        const keys = new Set<string>();
+        const primary = areaFeatureId(f);
+        if (primary) keys.add(primary);
+        if (f.id != null && String(f.id) !== "") keys.add(String(f.id));
+        if (props.id != null && String(props.id) !== "") keys.add(String(props.id));
+        for (const k of keys) polyById.set(k, geom);
       }
     }
     outer: for (const r of ranked) {
       const w = r.wind;
       if (w?.dirFromDeg == null || Number.isNaN(w.dirFromDeg)) continue;
       const { lng, lat } = r.centroid;
-      const windToDeg = windToDegFromDirFrom(w.dirFromDeg);
+      const windTo = windToDegFromDirFrom(w.dirFromDeg);
       const poly = polyById.get(r.areaId);
       const origins = poly
         ? sampleWindFieldOrigins(poly, lng, lat, WIND_FIELD_MAX_ARROWS)
         : [[lng, lat]];
       let i = 0;
       for (const [sx, sy] of origins) {
-        if (out.length >= MAX_TOTAL_WIND_FIELD_MARKERS) break outer;
-        out.push({
+        if (features.length >= MAX_TOTAL_WIND_FIELD_MARKERS) break outer;
+        features.push({
+          type: "Feature",
           id: `wf-${r.areaId}-${i++}`,
-          lng: sx,
-          lat: sy,
-          windToDeg,
+          properties: { windTo },
+          geometry: { type: "Point", coordinates: [sx, sy] },
         });
       }
     }
-    return out;
+    return { type: "FeatureCollection", features };
   }, [ranked, bundle]);
+
+  const windFieldFeatureCount = windFieldArrowsGeoJson.features.length;
+  useEffect(() => {
+    if (windFieldFeatureCount === 0) return;
+    const map = mapRef.current?.getMap();
+    if (!map?.isStyleLoaded()) return;
+    ensureWindFieldArrowImage(map);
+  }, [mapEpoch, windFieldFeatureCount, mapStyle]);
 
   const windLabels = useMemo((): FeatureCollection => {
     const features: Feature[] = [];
@@ -747,12 +823,13 @@ export function MapHub() {
       const w = r.wind;
       const { lng, lat } = r.centroid;
       const line1 = w ? windCompactSummary(w) : "—";
+      const mpLine = windMultiPointSubtitle(w);
       const visStr = formatVisibilityM(w?.visibilityM ?? null);
-      const line2 = visStr !== "—" ? `vis ${visStr}` : "";
+      const lineVis = visStr !== "—" ? `vis ${visStr}` : "";
       features.push({
         type: "Feature",
         properties: {
-          windText: [line1, line2].filter(Boolean).join("\n"),
+          windText: [line1, mpLine, lineVis].filter(Boolean).join("\n"),
         },
         geometry: { type: "Point", coordinates: [lng, lat] },
       });
@@ -1172,13 +1249,15 @@ export function MapHub() {
             </div>
             <p className="text-[10px] leading-snug text-zinc-500">
               Slider moves the forecast hour (Met.no / Yr in Europe with terrain elevation, otherwise
-              Open-Meteo). Many small <strong>downwind</strong> arrows (semi-transparent grid inside each
-              area).{" "}
+              Open-Meteo). Many small <strong>downwind</strong> SVG arrows sit <strong>under</strong> the tinted
+              area fill (map rotation keeps them aligned with true north).{" "}
               Labels: wind <strong>from</strong> (meteorology), whole m/s with gust in parentheses.{" "}
               <strong>Sky dot</strong> at each area centre opens Yr.no <strong>hourly</strong> forecast (new
               tab) for that point; <strong>Shift+click</strong> elsewhere does the same. <strong>Vis</strong> when
               shown
-              is modelled visibility — not used in score.
+              is modelled visibility — not used in score. Large or hilly areas may show a{" "}
+              <strong>speed range</strong> and <strong>spot count</strong> when multi-point forecast runs
+              (see scoring settings when signed in; guests use a smaller cap).
             </p>
           </label>
           {ranked.length > 0 ? (
@@ -1189,6 +1268,7 @@ export function MapHub() {
               <ul className="max-h-52 space-y-0 overflow-auto rounded-xl bg-teal-50/20 text-[11px] leading-snug text-zinc-700 ring-1 ring-teal-900/5">
                 {ranked.map((r, idx) => {
                   const visLabel = r.wind ? formatVisibilityM(r.wind.visibilityM) : "—";
+                  const mpSub = windMultiPointSubtitle(r.wind);
                   return (
                   <li key={r.areaId} className="border-b border-teal-900/[0.06] last:border-0">
                     <button
@@ -1217,6 +1297,9 @@ export function MapHub() {
                                     {visLabel}
                                   </>
                                 ) : null}
+                                {mpSub ? (
+                                  <span className="mt-0.5 block text-[10px] text-zinc-500">{mpSub}</span>
+                                ) : null}
                               </>
                             ) : (
                               <span className="text-zinc-400"> · no forecast</span>
@@ -1238,7 +1321,7 @@ export function MapHub() {
             </p>
           )}
           {isAuthed ? (
-            rankingPrefsLoading || !rankingForm ? (
+            rankingPrefsLoading || !rankingForm || !multiPointForm ? (
               <p className="mt-3 text-[10px] text-zinc-500">Loading your scoring settings…</p>
             ) : (
               <div className="mt-3 space-y-3 rounded-2xl border border-teal-200/80 bg-teal-50/30 p-3 ring-1 ring-teal-900/[0.06]">
@@ -1250,6 +1333,78 @@ export function MapHub() {
                   Weights scale wind fit, gust penalty, and how much direction matters before the
                   experience boost.
                 </p>
+                <div className="rounded-xl border border-sky-200/80 bg-sky-50/40 p-2.5 ring-1 ring-sky-900/[0.04]">
+                  <p className="text-[10px] font-semibold text-sky-950">Area forecast sampling</p>
+                  <p className="mt-1 text-[10px] leading-snug text-sky-900/90">
+                    <strong>Auto</strong> adds extra API calls when the polygon is wide (≈3+ km) or
+                    terrain varies a lot inside it. <strong>On</strong> always samples up to your max
+                    spots. <strong>Conservative</strong> scoring uses the weakest wind and strictest
+                    direction match among spots; <strong>representative</strong> uses medians and mean
+                    direction.
+                  </p>
+                  <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    <label className="flex flex-col gap-0.5">
+                      <span className="text-[10px] font-medium text-sky-950">Mode</span>
+                      <select
+                        value={multiPointForm.mode}
+                        onChange={(e) =>
+                          setMultiPointForm((p) =>
+                            p
+                              ? {
+                                  ...p,
+                                  mode: e.target.value as MultiPointForecastFormState["mode"],
+                                }
+                              : p,
+                          )
+                        }
+                        className="rounded-lg border border-sky-900/15 bg-white px-2 py-1 text-xs text-zinc-900"
+                      >
+                        <option value="off">Off (centre only)</option>
+                        <option value="auto">Auto (large / hilly areas)</option>
+                        <option value="on">On (always multi-spot)</option>
+                      </select>
+                    </label>
+                    <label className="flex flex-col gap-0.5">
+                      <span className="text-[10px] font-medium text-sky-950">Max spots (3–9)</span>
+                      <input
+                        type="number"
+                        min={3}
+                        max={9}
+                        step={1}
+                        value={multiPointForm.maxSamples}
+                        onChange={(e) => {
+                          const v = Math.round(Number(e.target.value));
+                          if (!Number.isFinite(v)) return;
+                          setMultiPointForm((p) =>
+                            p ? { ...p, maxSamples: Math.min(9, Math.max(3, v)) } : p,
+                          );
+                        }}
+                        className="rounded-lg border border-sky-900/15 bg-white px-2 py-1 text-xs text-zinc-900"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-0.5">
+                      <span className="text-[10px] font-medium text-sky-950">Collapse policy</span>
+                      <select
+                        value={multiPointForm.scoringPolicy}
+                        onChange={(e) =>
+                          setMultiPointForm((p) =>
+                            p
+                              ? {
+                                  ...p,
+                                  scoringPolicy: e.target
+                                    .value as MultiPointForecastFormState["scoringPolicy"],
+                                }
+                              : p,
+                          )
+                        }
+                        className="rounded-lg border border-sky-900/15 bg-white px-2 py-1 text-xs text-zinc-900"
+                      >
+                        <option value="conservative">Conservative (min wind / strict dir)</option>
+                        <option value="representative">Representative (median / mean dir)</option>
+                      </select>
+                    </label>
+                  </div>
+                </div>
                 <div className="grid grid-cols-2 gap-2">
                   <label className="flex flex-col gap-0.5">
                     <span className="text-[10px] font-medium text-zinc-700">Min wind (m/s)</span>
@@ -1367,7 +1522,7 @@ export function MapHub() {
                     className="rounded-xl border border-teal-600/40 bg-teal-600 px-3 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-teal-700"
                     onClick={() => void saveRankingPrefsForActiveSport()}
                   >
-                    Save scoring
+                    Save scoring &amp; sampling
                   </button>
                   <button
                     type="button"
@@ -1400,6 +1555,12 @@ export function MapHub() {
               Optimal wind is <strong>per practice area</strong> only. Open an area →{" "}
               <strong>Edit area</strong> to draw direction on the map or type degrees. Areas without
               an optimal get <strong>no direction penalty</strong> (unless you use saved wind sectors).
+            </p>
+            <p className="text-[11px] leading-snug text-zinc-600">
+              <strong>Multi-spot forecast</strong> (when enabled) fetches several grid-aligned points
+              inside each polygon with per-spot elevation for Met.no. Scores combine those samples:
+              conservative mode penalises using the lowest wind speed and the worst direction match;
+              gust penalty uses the strongest gust vs median speed.
             </p>
             {mapMode === "pickWind" ? (
               <div className="space-y-2 rounded-2xl border border-violet-200/80 bg-gradient-to-b from-violet-50/95 to-white/90 p-3 shadow-inner shadow-violet-900/5">
@@ -1986,9 +2147,18 @@ export function MapHub() {
             ? ["yr-forecast-point", "yr-forecast-point-halo", "areas-fill"]
             : []
         }
-        onLoad={() => {
-          const z = mapRef.current?.getMap().getZoom();
+        onLoad={(e) => {
+          const map = e.target;
+          setMapEpoch((n) => n + 1);
+          const z = map.getZoom();
           if (typeof z === "number" && Number.isFinite(z)) setMapZoom(z);
+          const syncWindFieldArrow = () => ensureWindFieldArrowImage(map);
+          syncWindFieldArrow();
+          map.on("style.load", syncWindFieldArrow);
+        }}
+        onStyleData={() => {
+          const map = mapRef.current?.getMap();
+          if (map?.isStyleLoaded()) ensureWindFieldArrowImage(map);
         }}
         onMove={(e) => {
           setMapZoom(e.viewState.zoom);
@@ -2124,26 +2294,38 @@ export function MapHub() {
         }}
       >
         <NavigationControl position="bottom-right" showCompass visualizePitch />
-        {windFieldMarkers.map((m) => (
-          <Marker
-            key={m.id}
-            longitude={m.lng}
-            latitude={m.lat}
-            anchor="center"
-            rotationAlignment="map"
-            pitchAlignment="map"
-            style={{ pointerEvents: "none" }}
-          >
-            <div
-              style={{
-                transform: `rotate(${cssRotateEastBaseToWindTo(m.windToDeg)}deg) scale(${fieldArrowScale})`,
-                transformOrigin: "center center",
+        {windFieldArrowsGeoJson.features.length > 0 ? (
+          <Source id="wind-field-arrows" type="geojson" data={windFieldArrowsGeoJson}>
+            <Layer
+              id="wind-field-arrows-symbol"
+              type="symbol"
+              layout={{
+                "icon-image": WIND_FIELD_ARROW_IMAGE_ID,
+                "icon-size": [
+                  "interpolate",
+                  ["linear"],
+                  ["zoom"],
+                  6,
+                  0.28,
+                  10,
+                  0.42,
+                  14,
+                  0.56,
+                  18,
+                  0.65,
+                ],
+                "icon-rotate": ["get", "windTo"],
+                "icon-rotation-alignment": "map",
+                "icon-pitch-alignment": "map",
+                "icon-allow-overlap": true,
+                "icon-ignore-placement": true,
               }}
-            >
-              <div className="map-wind-field-arrow" />
-            </div>
-          </Marker>
-        ))}
+              paint={{
+                "icon-opacity": 0.52,
+              }}
+            />
+          </Source>
+        ) : null}
         {selectedOptimalWindMarker && optimalWindLenPx > 0 ? (
           <Marker
             longitude={selectedOptimalWindMarker.lng}
@@ -2153,21 +2335,43 @@ export function MapHub() {
             pitchAlignment="map"
             style={{ pointerEvents: "none" }}
           >
-            <div
-              style={{
-                display: "inline-flex",
-                flexDirection: "row",
-                alignItems: "center",
-                transform: `rotate(${cssRotateEastBaseToWindTo(selectedOptimalWindMarker.windToDeg)}deg)`,
-                transformOrigin: "left center",
-              }}
-            >
-              <span
-                className="map-wind-optimal-arrow__shaft"
-                style={{ width: Math.max(6, optimalWindLenPx - 14) }}
-              />
-              <span className="map-wind-optimal-arrow__head" aria-hidden />
-            </div>
+            {(() => {
+              const w = optimalWindLenPx;
+              const shaftW = Math.max(6, w - 14);
+              const rot = cssRotateEastBaseToWindTo(selectedOptimalWindMarker.windToDeg);
+              return (
+                <svg
+                  width={w}
+                  height={20}
+                  viewBox={`0 0 ${w} 20`}
+                  style={{
+                    display: "block",
+                    transform: `rotate(${rot}deg)`,
+                    transformOrigin: "0 50%",
+                    filter:
+                      "drop-shadow(0 0 1px rgb(255 255 255 / 0.9)) drop-shadow(0 0 2px rgb(255 255 255 / 0.5))",
+                  }}
+                  aria-hidden
+                >
+                  <rect
+                    x="0"
+                    y="8"
+                    width={shaftW}
+                    height="4"
+                    rx="1"
+                    fill="#b91c1c"
+                    fillOpacity={0.92}
+                  />
+                  <path
+                    d={`M${shaftW} 3 L${w} 10 L${shaftW} 17 Z`}
+                    fill="#dc2626"
+                    stroke="#7f1d1d"
+                    strokeWidth={1}
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              );
+            })()}
           </Marker>
         ) : null}
         {windPickPreview?.kind === "dot" ? (
@@ -2179,7 +2383,16 @@ export function MapHub() {
             pitchAlignment="map"
             style={{ pointerEvents: "none" }}
           >
-            <div className="map-wind-pick-dot" />
+            <svg width={18} height={18} viewBox="0 0 18 18" aria-hidden>
+              <circle
+                cx="9"
+                cy="9"
+                r="6"
+                fill="#6d28d9"
+                stroke="#ffffff"
+                strokeWidth="2"
+              />
+            </svg>
           </Marker>
         ) : null}
         {windPickPreview?.kind === "arrow" && windPickArrowLenPx > 0 ? (
@@ -2191,21 +2404,43 @@ export function MapHub() {
             pitchAlignment="map"
             style={{ pointerEvents: "none" }}
           >
-            <div
-              style={{
-                display: "inline-flex",
-                flexDirection: "row",
-                alignItems: "center",
-                transform: `rotate(${cssRotateEastBaseToWindTo(windPickPreview.windToDeg)}deg)`,
-                transformOrigin: "left center",
-              }}
-            >
-              <span
-                className="map-wind-pick-arrow__shaft"
-                style={{ width: Math.max(4, windPickArrowLenPx - 12) }}
-              />
-              <span className="map-wind-pick-arrow__head" aria-hidden />
-            </div>
+            {(() => {
+              const w = windPickArrowLenPx;
+              const shaftW = Math.max(4, w - 12);
+              const rot = cssRotateEastBaseToWindTo(windPickPreview.windToDeg);
+              return (
+                <svg
+                  width={w}
+                  height={20}
+                  viewBox={`0 0 ${w} 20`}
+                  style={{
+                    display: "block",
+                    transform: `rotate(${rot}deg)`,
+                    transformOrigin: "0 50%",
+                    filter:
+                      "drop-shadow(0 0 1px rgb(255 255 255 / 0.9)) drop-shadow(0 0 2px rgb(255 255 255 / 0.5))",
+                  }}
+                  aria-hidden
+                >
+                  <rect
+                    x="0"
+                    y="8"
+                    width={shaftW}
+                    height="4"
+                    rx="1"
+                    fill="#7c3aed"
+                    fillOpacity={0.95}
+                  />
+                  <path
+                    d={`M${shaftW} 4 L${w} 10 L${shaftW} 16 Z`}
+                    fill="#8b5cf6"
+                    stroke="#5b21b6"
+                    strokeWidth={1}
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              );
+            })()}
           </Marker>
         ) : null}
         {drawPreview?.features.length ? (

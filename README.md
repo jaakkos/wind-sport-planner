@@ -10,7 +10,7 @@ Next.js app for kite skiing and kite surfing: **magic-link email auth** (Auth.js
 
 ## Prerequisites
 
-- Node.js 20+
+- Node.js **22.12+** (LTS line; repo pins **22.14** in **`.nvmrc`**, CI, and Render `NODE_VERSION`)
 - Docker Desktop (for local Postgres + Mailpit)
 
 ## Local setup

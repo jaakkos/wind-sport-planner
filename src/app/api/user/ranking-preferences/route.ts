@@ -4,6 +4,7 @@ import { Prisma } from "@/generated/prisma/client";
 import type { RankingPreferencesDoc } from "@/lib/heuristics/rankingPreferences";
 import {
   defaultRankingPreferencesResponse,
+  multiPointForecastPrefsSchema,
   parseRankingPreferencesDoc,
   rankingPreferencesDocSchema,
   sportRankingPrefsSchema,
@@ -15,6 +16,9 @@ const patchBodySchema = z
   .object({
     kiteski: z.union([sportRankingPrefsSchema.partial(), z.null()]).optional(),
     kitesurf: z.union([sportRankingPrefsSchema.partial(), z.null()]).optional(),
+    multiPointForecast: z
+      .union([multiPointForecastPrefsSchema.partial(), z.null()])
+      .optional(),
   })
   .strict();
 
@@ -33,6 +37,15 @@ function mergeRankingPreferences(
     }
     const prev = (existing?.[sport] ?? {}) as Record<string, unknown>;
     next[sport] = { ...prev, ...p };
+  }
+  if ("multiPointForecast" in patch) {
+    const mp = patch.multiPointForecast;
+    if (mp === null) {
+      delete next.multiPointForecast;
+    } else {
+      const prev = (existing?.multiPointForecast ?? {}) as Record<string, unknown>;
+      next.multiPointForecast = { ...prev, ...mp };
+    }
   }
   if (Object.keys(next).length === 0) return { ok: true, doc: null };
   const validated = rankingPreferencesDocSchema.safeParse(next);

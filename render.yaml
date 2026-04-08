@@ -24,7 +24,7 @@ services:
     healthCheckPath: /
     envVars:
       - key: NODE_VERSION
-        value: "20.19.0"
+        value: "22.14.0"
       - key: AUTH_TRUST_HOST
         value: "true"
       - key: AUTH_URL
