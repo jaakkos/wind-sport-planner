@@ -60,12 +60,15 @@ export function AreaForecastSamples({
   sport,
   optimalWindHalfWidthDeg,
   onMapPointsChange,
+  embedded = false,
 }: {
   areaId: string;
   forecastAtIso: string;
   sport: "kiteski" | "kitesurf";
   optimalWindHalfWidthDeg: number;
   onMapPointsChange: (fc: FeatureCollection | null) => void;
+  /** Hide section chrome when nested under another heading (e.g. edit panel disclosure). */
+  embedded?: boolean;
 }) {
   const [data, setData] = useState<ApiOk | null>(null);
   const [loading, setLoading] = useState(true);
@@ -118,21 +121,25 @@ export function AreaForecastSamples({
   }, [data]);
 
   return (
-    <div className="mt-3 border-t border-teal-200/80 pt-2">
-      <p className="text-xs font-semibold text-zinc-900">Forecast sample spots</p>
-      <p className="mt-1 text-[10px] leading-snug text-zinc-600">
-        Same locations as ranking uses for this hour (sidebar forecast time). Multiple{" "}
-        <strong>amber dots</strong> on the map when the polygon is wide or elevation varies inside
-        the area — compare wind at higher vs lower points.
-      </p>
+    <div className={embedded ? "space-y-2" : "mt-3 border-t border-app-border pt-2"}>
+      {!embedded ? (
+        <>
+          <p className="text-xs font-semibold text-app-fg">Forecast sample spots</p>
+          <p className="mt-1 text-[10px] leading-snug text-app-fg-muted">
+            Same locations as ranking uses for this hour (sidebar forecast time). Multiple{" "}
+            <strong>amber dots</strong> on the map when the polygon is wide or elevation varies inside
+            the area — compare wind at higher vs lower points.
+          </p>
+        </>
+      ) : null}
       {loading ? (
-        <p className="mt-2 text-[10px] text-zinc-500">Loading samples…</p>
+        <p className="mt-2 text-[10px] text-app-fg-subtle">Loading samples…</p>
       ) : err ? (
-        <p className="mt-2 text-[10px] text-red-600">{err}</p>
+        <p className="mt-2 text-[10px] text-app-danger">{err}</p>
       ) : data ? (
         <>
-          <p className="mt-1 text-[10px] text-zinc-500">
-            Mode: <span className="font-medium text-zinc-700">{data.multiPointMode}</span>
+          <p className="mt-1 text-[10px] text-app-fg-subtle">
+            Mode: <span className="font-medium text-app-fg-muted">{data.multiPointMode}</span>
             {data.spots.length > 1 ? (
               <>
                 {" "}
@@ -161,13 +168,13 @@ export function AreaForecastSamples({
               return (
                 <li
                   key={`${s.lat.toFixed(5)},${s.lng.toFixed(5)},${i}`}
-                  className="rounded border border-amber-200/80 bg-amber-50/40 px-2 py-1.5 text-zinc-800"
+                  className="rounded border border-app-warning-border bg-app-warning-bg px-2 py-1.5 text-app-warning-fg"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-1">
-                    <span className="font-mono text-[9px] text-zinc-500">
+                    <span className="font-mono text-[9px] text-app-fg-subtle">
                       {s.lat.toFixed(4)}, {s.lng.toFixed(4)}
                     </span>
-                    <span className="shrink-0 text-[9px] text-zinc-600">
+                    <span className="shrink-0 text-[9px] text-app-fg-muted">
                       {s.elevationM != null && Number.isFinite(s.elevationM)
                         ? `${Math.round(s.elevationM)} m AMSL`
                         : "elev —"}
@@ -184,7 +191,7 @@ export function AreaForecastSamples({
                         {vis && vis !== "—" ? ` · vis ${vis}` : ""}
                       </>
                     ) : (
-                      <span className="text-zinc-500">No forecast for this point</span>
+                      <span className="text-app-fg-subtle">No forecast for this point</span>
                     )}
                   </p>
                   <a

@@ -1,5 +1,6 @@
 @import "tailwindcss";
 
+/* Semantic UI tokens — map hub, sidebars (see docs/ui-roadmap §5). */
 :root {
   --background: #f7fcfb;
   --foreground: #0f172a;
@@ -8,6 +9,34 @@
   --brand-teal-soft: #ccfbf1;
   --brand-sky: #0ea5e9;
   --border-subtle: rgb(15 118 110 / 0.12);
+
+  --app-surface: #ffffff;
+  --app-surface-raised: rgb(255 255 255 / 0.92);
+  --app-surface-muted: rgb(240 253 250 / 0.55);
+  --app-border: rgb(15 118 110 / 0.14);
+  --app-border-subtle: rgb(15 118 110 / 0.09);
+  --app-fg: #18181b;
+  --app-fg-muted: #52525b;
+  --app-fg-subtle: #71717a;
+  --app-accent: #0d9488;
+  --app-accent-hover: #0f766e;
+  --app-accent-soft: rgb(240 253 250 / 0.9);
+  --app-accent-muted: rgb(13 148 136 / 0.12);
+  --app-danger: #b91c1c;
+  --app-danger-border: rgb(252 165 165);
+  --app-danger-bg: rgb(254 242 242 / 0.92);
+  --app-warning-bg: rgb(255 251 235 / 0.95);
+  --app-warning-border: rgb(252 211 77 / 0.85);
+  --app-warning-fg: #422006;
+  --app-info-bg: rgb(240 249 255 / 0.65);
+  --app-info-border: rgb(14 165 233 / 0.35);
+  --app-info-fg: #0c4a6e;
+  --app-info-fg-strong: #075985;
+  --app-shadow-hub: 0 10px 25px -8px rgb(15 23 42 / 0.1);
+  --app-rank-strong: #22c55e;
+  --app-rank-ok: #eab308;
+  --app-rank-weak: #f97316;
+  --app-rank-poor: #94a3b8;
 }
 
 @theme inline {
@@ -15,6 +44,29 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  --color-app-surface: var(--app-surface);
+  --color-app-surface-raised: var(--app-surface-raised);
+  --color-app-surface-muted: var(--app-surface-muted);
+  --color-app-border: var(--app-border);
+  --color-app-border-subtle: var(--app-border-subtle);
+  --color-app-fg: var(--app-fg);
+  --color-app-fg-muted: var(--app-fg-muted);
+  --color-app-fg-subtle: var(--app-fg-subtle);
+  --color-app-accent: var(--app-accent);
+  --color-app-accent-hover: var(--app-accent-hover);
+  --color-app-accent-soft: var(--app-accent-soft);
+  --color-app-accent-muted: var(--app-accent-muted);
+  --color-app-danger: var(--app-danger);
+  --color-app-danger-border: var(--app-danger-border);
+  --color-app-danger-bg: var(--app-danger-bg);
+  --color-app-warning-bg: var(--app-warning-bg);
+  --color-app-warning-border: var(--app-warning-border);
+  --color-app-warning-fg: var(--app-warning-fg);
+  --color-app-info-bg: var(--app-info-bg);
+  --color-app-info-border: var(--app-info-border);
+  --color-app-info-fg: var(--app-info-fg);
+  --color-app-info-fg-strong: var(--app-info-fg-strong);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -23,6 +75,30 @@
     --foreground: #e2e8f0;
     --surface-elevated: #141c1a;
     --border-subtle: rgb(148 163 184 / 0.2);
+
+    --app-surface: #141c1a;
+    --app-surface-raised: rgb(20 28 26 / 0.94);
+    --app-surface-muted: rgb(15 118 110 / 0.18);
+    --app-border: rgb(148 163 184 / 0.22);
+    --app-border-subtle: rgb(148 163 184 / 0.12);
+    --app-fg: #e4e4e7;
+    --app-fg-muted: #a1a1aa;
+    --app-fg-subtle: #71717a;
+    --app-accent: #2dd4bf;
+    --app-accent-hover: #5eead4;
+    --app-accent-soft: rgb(15 118 110 / 0.25);
+    --app-accent-muted: rgb(45 212 191 / 0.2);
+    --app-danger: #f87171;
+    --app-danger-border: rgb(248 113 113 / 0.45);
+    --app-danger-bg: rgb(127 29 29 / 0.35);
+    --app-warning-bg: rgb(120 53 15 / 0.45);
+    --app-warning-border: rgb(245 158 11 / 0.4);
+    --app-warning-fg: #fef3c7;
+    --app-info-bg: rgb(12 74 110 / 0.35);
+    --app-info-border: rgb(56 189 248 / 0.35);
+    --app-info-fg: #bae6fd;
+    --app-info-fg-strong: #e0f2fe;
+    --app-shadow-hub: 0 12px 28px -10px rgb(0 0 0 / 0.45);
   }
 }
 

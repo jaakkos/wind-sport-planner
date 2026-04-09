@@ -3,6 +3,7 @@ export type ToolSectionKey =
   | "draw"
   | "windRank"
   | "basemap"
+  | "overlays"
   | "experiences"
   | "forecast"
   | "account";
@@ -12,6 +13,7 @@ export const ALL_TOOL_SECTIONS_OPEN: Record<ToolSectionKey, boolean> = {
   draw: true,
   windRank: true,
   basemap: true,
+  overlays: true,
   experiences: true,
   forecast: true,
   account: true,
@@ -23,6 +25,7 @@ export const DEFAULT_TOOL_SECTIONS: Record<ToolSectionKey, boolean> = {
   draw: false,
   windRank: false,
   basemap: false,
+  overlays: false,
   experiences: false,
   forecast: true,
   account: false,
@@ -37,7 +40,7 @@ export function toolKeysForTab(tab: SidebarTab): ToolSectionKey[] {
     case "plan":
       return ["sport", "forecast", "windRank"];
     case "map":
-      return ["basemap"];
+      return ["basemap", "overlays"];
     case "you":
       return ["draw", "experiences", "account"];
     default:

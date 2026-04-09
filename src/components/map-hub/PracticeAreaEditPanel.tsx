@@ -1,10 +1,23 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FeatureCollection } from "geojson";
 import { sectorsFromCenter } from "@/lib/heuristics/windDirection";
 import { areaFeatureId } from "@/lib/map/mapHubHelpers";
 import { AreaForecastSamples } from "./AreaForecastSamples";
+import { PersistedCollapsible } from "./MapHubDisclosures";
+import { hubOverlayZ } from "./mapHubOverlayZ";
+import {
+  hubBtnDanger,
+  hubBtnPrimary,
+  hubBtnSecondary,
+  hubBtnSecondarySm,
+  hubInput,
+  hubMeta,
+  hubPanelShell,
+  hubSectionTitle,
+  hubSelect,
+} from "./hubUi";
 import type { Bundle } from "./types";
 
 const LABEL_PRESETS = ["primary", "lakes", "coast", "backup", "other"] as const;
@@ -194,159 +207,193 @@ export function PracticeAreaEditPanel({
       ? `${Math.round(props.optimalWindFromDeg)}° (wind from)`
       : "Not set";
 
+  const handleForecastSamplesOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open) onForecastSamplesMapChange(null);
+    },
+    [onForecastSamplesMapChange],
+  );
+
   return (
-    <div className="absolute right-2 top-2 z-10 w-80 max-h-[85vh] overflow-auto rounded-2xl border border-teal-900/10 bg-white/95 p-3 text-sm shadow-xl shadow-teal-900/10 backdrop-blur-md">
+    <div
+      className={`absolute right-2 top-2 w-80 max-h-[85vh] overflow-auto p-3 text-sm ${hubPanelShell} ${hubOverlayZ.editPanel}`}
+    >
+      {busy ? (
+        <div
+          className="pointer-events-none absolute inset-0 z-[1] flex items-start justify-center rounded-2xl bg-app-surface/60 pt-8 backdrop-blur-[1px]"
+          aria-busy="true"
+          aria-live="polite"
+        >
+          <span className="rounded-full border border-app-border bg-app-surface px-2.5 py-1 text-[10px] font-medium text-app-fg-muted shadow-sm">
+            Saving…
+          </span>
+        </div>
+      ) : null}
       <div className="mb-2 flex justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <span className="font-medium">{isOwn ? "Edit area" : "Area"}</span>
+          <span className="font-medium text-app-fg">{isOwn ? "Edit area" : "Area"}</span>
           {feature ? (
-            <p className="truncate text-sm text-zinc-600">
+            <p className="truncate text-sm text-app-fg-muted">
               {props?.name?.trim() ||
                 (isOwn ? "Untitled — add a name below" : "Shared practice area")}
             </p>
           ) : null}
         </div>
-        <button type="button" className="text-zinc-500" onClick={onClose} aria-label="Close">
+        <button type="button" className="text-app-fg-subtle" onClick={onClose} aria-label="Close">
           ✕
         </button>
       </div>
-      {feature ? (
-        <AreaForecastSamples
-          key={`${areaId}-${forecastAtIso}-${activeSport}-${optimalWindHalfWidthDeg}`}
-          areaId={areaId}
-          forecastAtIso={forecastAtIso}
-          sport={activeSport}
-          optimalWindHalfWidthDeg={optimalWindHalfWidthDeg}
-          onMapPointsChange={onForecastSamplesMapChange}
-        />
-      ) : null}
       {!feature ? (
-        <p className="text-xs text-zinc-600">
+        <p className="text-xs text-app-fg-muted">
           This area is not visible with the current sport filter. Switch sport in the sidebar to
           edit it, or it may have been removed.
         </p>
       ) : !isOwn ? (
         <>
-          <p className="mt-2 rounded border border-sky-200 bg-sky-50/90 px-2 py-1.5 text-[11px] leading-snug text-sky-950">
+          <p className="mt-2 rounded border border-app-info-border bg-app-info-bg px-2 py-1.5 text-[11px] leading-snug text-app-info-fg">
             This practice area belongs to another user. You can view it and log sessions here; only
             the owner can change boundaries, wind settings, or visibility.
           </p>
-          <p className="break-all font-mono text-[10px] text-zinc-500">{areaId}</p>
+          <p className="break-all font-mono text-[10px] text-app-fg-subtle">{areaId}</p>
           <p className="mt-2 text-xs">
-            <span className="font-medium text-zinc-700">Name</span>
+            <span className="font-medium text-app-fg-muted">Name</span>
             <br />
             {areaName.trim() || "Untitled"}
           </p>
           <p className="mt-2 text-xs">
-            <span className="font-medium text-zinc-700">Sports</span>
+            <span className="font-medium text-app-fg-muted">Sports</span>
             <br />
             {[kiteski && "kiteski", kitesurf && "kitesurf"].filter(Boolean).join(", ") || "—"}
           </p>
           {props?.isPublic === true ? (
-            <p className="mt-2 text-[11px] text-zinc-600">Listed as public — visible to all signed-in users.</p>
+            <p className="mt-2 text-[11px] text-app-fg-muted">Listed as public — visible to all signed-in users.</p>
           ) : null}
-          <div className="mt-3 border-t border-zinc-200 pt-2">
-            <p className="text-xs font-semibold text-zinc-900">Optimal wind</p>
-            <p className="mt-1 text-[10px] text-zinc-600">
+          <div className="mt-3 border-t border-app-border pt-2">
+            <p className={hubSectionTitle}>Optimal wind</p>
+            <p className={`mt-1 ${hubMeta}`}>
               Saved optimal: {optimalPreview}. Sectors: {sectorsPreview}.
             </p>
           </div>
+          <PersistedCollapsible
+            title="Forecast samples"
+            summaryCollapsed="Elevations, Yr links, amber dots on map"
+            storageKey="mapHub.editForecastSamplesExpanded"
+            onOpenChange={handleForecastSamplesOpenChange}
+          >
+            <AreaForecastSamples
+              key={`${areaId}-${forecastAtIso}-${activeSport}-${optimalWindHalfWidthDeg}`}
+              areaId={areaId}
+              forecastAtIso={forecastAtIso}
+              sport={activeSport}
+              optimalWindHalfWidthDeg={optimalWindHalfWidthDeg}
+              onMapPointsChange={onForecastSamplesMapChange}
+              embedded
+            />
+          </PersistedCollapsible>
         </>
       ) : (
         <>
-          <p className="break-all font-mono text-[10px] text-zinc-500">{areaId}</p>
-          <label className="mt-2 block text-xs">
-            Name
-            <input
-              type="text"
-              value={areaName}
-              onChange={(e) => setAreaName(e.target.value.slice(0, 120))}
-              className="mt-0.5 w-full rounded border px-2 py-1"
-              maxLength={120}
-              placeholder="Visible on map and in lists"
-            />
-          </label>
-          <fieldset className="mt-2 space-y-1">
-            <legend className="text-xs font-medium text-zinc-700">Sports</legend>
-            <label className="flex items-center gap-2 text-xs">
-              <input type="checkbox" checked={kiteski} onChange={(e) => setKiteski(e.target.checked)} />
-              Kite ski
+          <p className="break-all font-mono text-[10px] text-app-fg-subtle">{areaId}</p>
+
+          <div className="mt-2 space-y-2">
+            <p className={hubSectionTitle}>Basics</p>
+            <label className="block text-xs text-app-fg">
+              Name
+              <input
+                type="text"
+                value={areaName}
+                onChange={(e) => setAreaName(e.target.value.slice(0, 120))}
+                className={hubInput}
+                maxLength={120}
+                placeholder="Visible on map and in lists"
+              />
             </label>
-            <label className="flex items-center gap-2 text-xs">
+            <fieldset className="space-y-1">
+              <legend className="text-xs font-medium text-app-fg-muted">Sports</legend>
+              <label className="flex items-center gap-2 text-xs">
+                <input type="checkbox" checked={kiteski} onChange={(e) => setKiteski(e.target.checked)} />
+                Kite ski
+              </label>
+              <label className="flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={kitesurf}
+                  onChange={(e) => setKitesurf(e.target.checked)}
+                />
+                Kite surf
+              </label>
+            </fieldset>
+            <label className="block text-xs text-app-fg">
+              Label preset
+              <select value={labelPreset} onChange={(e) => setLabelPreset(e.target.value)} className={hubSelect}>
+                {LABEL_PRESETS.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex cursor-pointer items-start gap-2 text-xs leading-snug text-app-fg">
               <input
                 type="checkbox"
-                checked={kitesurf}
-                onChange={(e) => setKitesurf(e.target.checked)}
+                className="mt-0.5"
+                checked={areaPublic}
+                onChange={(e) => setAreaPublic(e.target.checked)}
               />
-              Kite surf
-            </label>
-          </fieldset>
-          <label className="mt-2 block text-xs">
-            Label preset
-            <select
-              value={labelPreset}
-              onChange={(e) => setLabelPreset(e.target.value)}
-              className="mt-0.5 w-full rounded border px-2 py-1"
-            >
-              {LABEL_PRESETS.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="mt-2 flex cursor-pointer items-start gap-2 text-xs leading-snug">
-            <input
-              type="checkbox"
-              className="mt-0.5"
-              checked={areaPublic}
-              onChange={(e) => setAreaPublic(e.target.checked)}
-            />
-            <span>
-              <span className="font-medium text-zinc-800">Public</span>
-              <span className="block text-[10px] text-zinc-600">
-                Visible on the map and in rankings for every signed-in user (still requires login).
+              <span>
+                <span className="font-medium text-app-fg">Public</span>
+                <span className="block text-[10px] text-app-fg-muted">
+                  Visible on the map and in rankings for every signed-in user (still requires login).
+                </span>
               </span>
-            </span>
-          </label>
+            </label>
+            <button
+              type="button"
+              disabled={busy}
+              className={`w-full ${hubBtnPrimary}`}
+              onClick={() => void saveMeta()}
+            >
+              Save name, label, sports &amp; public
+            </button>
+          </div>
 
-          <div className="mt-3 border-t border-zinc-200 pt-2">
-            <p className="text-xs font-semibold text-zinc-900">Optimal wind (this area)</p>
-            <p className="mt-1 text-[10px] leading-snug text-zinc-600">
+          <div className="mt-3 border-t border-app-border pt-2">
+            <p className={hubSectionTitle}>Wind &amp; direction</p>
+            <p className={`mt-1 ${hubMeta}`}>
               Direction wind comes <strong>from</strong> (°). Drives ranking; optional arc below uses
               the sidebar &quot;Saved-area sector half-width&quot;.
             </p>
             {areaWindPickActive ? (
-              <div className="mt-2 space-y-2 rounded border border-violet-300 bg-violet-50/90 p-2">
-                <p className="text-[11px] leading-snug text-violet-950">
+              <div className="mt-2 space-y-2 rounded-xl border border-app-border bg-app-accent-soft p-2">
+                <p className="text-[11px] leading-snug text-app-accent-hover">
                   <strong>1.</strong> Click the <strong>tail</strong> on the map.{" "}
                   <strong>2.</strong> Click the <strong>head</strong> (downwind). Saves automatically.
                 </p>
                 <button
                   type="button"
-                  className="w-full rounded border border-violet-400 bg-white px-2 py-1 text-[11px] text-violet-900 hover:bg-violet-100/80"
+                  className={`w-full ${hubBtnSecondary}`}
                   onClick={() => onCancelWindPick()}
                 >
                   Cancel drawing
                 </button>
-                <p className="text-[10px] text-violet-800/90">
-                  <kbd className="rounded bg-violet-200/80 px-0.5">Esc</kbd> · right-click resets tail
+                <p className="text-[10px] text-app-fg-muted">
+                  <kbd className="rounded bg-app-accent-muted px-0.5">Esc</kbd> · right-click resets tail
                 </p>
               </div>
             ) : (
               <button
                 type="button"
                 disabled={busy}
-                className="mt-2 w-full rounded bg-violet-700 py-2 text-xs font-medium text-white shadow-sm hover:bg-violet-800 disabled:opacity-50"
+                className={`mt-2 w-full ${hubBtnPrimary}`}
                 onClick={() => onDrawAreaOptimalWind()}
               >
                 Draw direction on map
               </button>
             )}
-            <p className="mt-2 text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+            <p className="mt-2 text-[10px] font-medium uppercase tracking-wide text-app-fg-subtle">
               Or type degrees
             </p>
-            <label className="mt-0.5 block text-xs">
+            <label className="mt-0.5 block text-xs text-app-fg">
               Wind from (°)
               <input
                 type="number"
@@ -355,7 +402,7 @@ export function PracticeAreaEditPanel({
                 step={1}
                 value={optimalFromInput}
                 onChange={(e) => setOptimalFromInput(e.target.value)}
-                className="mt-0.5 w-full rounded border px-2 py-1"
+                className={hubInput}
                 placeholder="e.g. 180 — empty = clear saved value"
                 disabled={busy || areaWindPickActive}
               />
@@ -364,7 +411,7 @@ export function PracticeAreaEditPanel({
               <button
                 type="button"
                 disabled={busy || areaWindPickActive}
-                className="flex-1 rounded border border-zinc-300 py-1 text-[10px] text-zinc-800"
+                className={`flex-1 ${hubBtnSecondarySm}`}
                 onClick={() => void saveAreaOptimal()}
               >
                 Save optimal
@@ -372,31 +419,20 @@ export function PracticeAreaEditPanel({
               <button
                 type="button"
                 disabled={busy || areaWindPickActive}
-                className="rounded border border-zinc-300 px-2 py-1 text-[10px] text-zinc-600"
+                className={hubBtnSecondarySm}
                 onClick={() => void patch({ optimalWindFromDeg: null })}
               >
                 Clear
               </button>
             </div>
-            <p className="mt-2 text-[10px] leading-snug text-zinc-500">
+            <p className={`mt-2 ${hubMeta}`}>
               Saved optimal: {optimalPreview}. Sectors: {sectorsPreview}. Stronger rank when forecast
               aligns; extra boost inside saved sectors.
             </p>
-          </div>
-
-          <div className="mt-2 flex flex-col gap-1.5">
-            <button
-              type="button"
-              disabled={busy}
-              className="w-full rounded bg-zinc-900 py-1.5 text-xs text-white disabled:opacity-50"
-              onClick={() => void saveMeta()}
-            >
-              Save name, label, sports &amp; public
-            </button>
             <button
               type="button"
               disabled={busy || areaWindPickActive}
-              className="w-full rounded border border-zinc-300 py-1.5 text-xs"
+              className={`mt-3 w-full ${hubBtnSecondary}`}
               onClick={() => void applyWindSector()}
             >
               Apply acceptable arc from area optimal (sidebar ± width)
@@ -404,7 +440,7 @@ export function PracticeAreaEditPanel({
             <button
               type="button"
               disabled={busy}
-              className="w-full rounded border border-zinc-300 py-1.5 text-xs text-zinc-700"
+              className={`w-full ${hubBtnSecondary}`}
               onClick={() => void clearWindSectors()}
             >
               Clear saved wind sectors
@@ -412,7 +448,7 @@ export function PracticeAreaEditPanel({
             <button
               type="button"
               disabled={busy}
-              className="w-full rounded border border-sky-600 py-1.5 text-xs text-sky-800"
+              className={`w-full ${hubBtnSecondary}`}
               onClick={() => {
                 const g = feature.geometry as GeoJSON.Polygon;
                 if (g?.type === "Polygon") onStartBoundaryEdit(g);
@@ -420,10 +456,30 @@ export function PracticeAreaEditPanel({
             >
               Redraw boundary
             </button>
+          </div>
+
+          <PersistedCollapsible
+            title="Forecast samples"
+            summaryCollapsed="Elevations, Yr links, amber dots on map"
+            storageKey="mapHub.editForecastSamplesExpanded"
+            onOpenChange={handleForecastSamplesOpenChange}
+          >
+            <AreaForecastSamples
+              key={`${areaId}-${forecastAtIso}-${activeSport}-${optimalWindHalfWidthDeg}`}
+              areaId={areaId}
+              forecastAtIso={forecastAtIso}
+              sport={activeSport}
+              optimalWindHalfWidthDeg={optimalWindHalfWidthDeg}
+              onMapPointsChange={onForecastSamplesMapChange}
+              embedded
+            />
+          </PersistedCollapsible>
+
+          <div className="mt-3 border-t border-app-danger-border pt-2">
             <button
               type="button"
               disabled={busy}
-              className="w-full rounded border border-red-300 py-1.5 text-xs text-red-700"
+              className={`w-full ${hubBtnDanger}`}
               onClick={() => void deleteArea()}
             >
               Delete area
@@ -431,7 +487,7 @@ export function PracticeAreaEditPanel({
           </div>
         </>
       )}
-      {localMsg && <p className="mt-2 text-xs text-zinc-600">{localMsg}</p>}
+      {localMsg && <p className="mt-2 text-xs text-app-fg-muted">{localMsg}</p>}
     </div>
   );
 }

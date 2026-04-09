@@ -4,7 +4,6 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import Image from "next/image";
 import Link from "next/link";
 import { signOut, useSession } from "next-auth/react";
-import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import MapGL, {
   Layer,
@@ -16,15 +15,46 @@ import MapGL, {
 import bbox from "@turf/bbox";
 import centroid from "@turf/centroid";
 import type { Feature, FeatureCollection, Polygon } from "geojson";
+import {
+  ALL_TOOL_SECTIONS_OPEN,
+  DEFAULT_TOOL_SECTIONS,
+  type SidebarTab,
+  SIDEBAR_TAB_STORAGE,
+  type ToolSectionKey,
+  toolKeysForTab,
+} from "@/components/map-hub/constants";
+import { CollapsibleSection } from "@/components/map-hub/CollapsibleSection";
+import { HelpDisclosure, PersistedCollapsible } from "@/components/map-hub/MapHubDisclosures";
+import { ForecastTimeControl } from "@/components/map-hub/ForecastTimeControl";
+import { MapLayerOverlaysSection } from "@/components/map-hub/MapLayerOverlaysSection";
+import { MapHubLegend } from "@/components/map-hub/MapHubLegend";
+import { TerrainClickPanel } from "@/components/map-hub/TerrainClickPanel";
+import { RankedAreaRow } from "@/components/map-hub/RankedAreaRow";
+import { RankedListSkeleton, ScoringPrefsSkeleton } from "@/components/map-hub/hubSkeleton";
+import { hubOverlayZ } from "@/components/map-hub/mapHubOverlayZ";
 import { PracticeAreaEditPanel } from "@/components/map-hub/PracticeAreaEditPanel";
+import {
+  hubBtnPrimary,
+  hubBtnSecondary,
+  hubBtnSecondaryToolbar,
+  hubInputNative,
+  hubKbd,
+  hubListRow,
+} from "@/components/map-hub/hubUi";
 import {
   type BasemapId,
   buildRasterBasemapStyle,
   maptilerOutdoorStyleUrl,
 } from "@/lib/map/styles";
 import type { RankedPracticeArea } from "@/lib/heuristics/rankAreaTypes";
+import {
+  defaultMapLayerToggles,
+  readMapLayerTogglesFromStorage,
+  writeMapLayerTogglesToStorage,
+  type MapLayerTogglesState,
+} from "@/lib/map/mapLayerToggles";
 import { formatVisibilityM } from "@/lib/weather/formatVisibility";
-import { yrNoDailyTableUrlEn, yrNoHourlyTableUrlEn } from "@/lib/yrNoUrls";
+import { yrNoHourlyTableUrlEn } from "@/lib/yrNoUrls";
 import {
   cssRotateEastBaseToWindTo,
   windToDegFromDirFrom,
@@ -35,34 +65,19 @@ import {
 } from "@/lib/map/windFieldArrowIcon";
 import { clampArrowLengthInsidePolygon } from "@/lib/map/windArrowLength";
 import {
+  cardinalFromDeg,
+  floorToHourMs,
   MAX_TOTAL_WIND_FIELD_MARKERS,
+  toDatetimeLocalInput,
   WIND_FIELD_MAX_ARROWS,
+  terrainPopoverScreenPosition,
+  windCompactSummary,
+  windMultiPointSubtitle,
 } from "@/lib/map/mapHubHelpers";
 import {
   windFieldSpatialProbePoints,
   WIND_MAP_ARROW_MAX_SAMPLES_SETTING,
 } from "@/lib/heuristics/windSamplePoints";
-/** Inline glyph: opens in new tab (paired with Yr favicon on external forecast links). */
-function ExternalTabIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      width={12}
-      height={12}
-      aria-hidden
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-      <polyline points="15 3 21 3 21 9" />
-      <line x1="10" y1="14" x2="21" y2="3" />
-    </svg>
-  );
-}
 
 type Bundle = {
   activeSport: string;
@@ -146,26 +161,6 @@ function rankColor(score: number) {
   return "#94a3b8";
 }
 
-/** Meteorological: direction wind comes from (same as forecast APIs). */
-const WIND_FROM_OPTIONS: { label: string; deg: number }[] = [
-  { label: "N", deg: 0 },
-  { label: "NNE", deg: 22.5 },
-  { label: "NE", deg: 45 },
-  { label: "ENE", deg: 67.5 },
-  { label: "E", deg: 90 },
-  { label: "ESE", deg: 112.5 },
-  { label: "SE", deg: 135 },
-  { label: "SSE", deg: 157.5 },
-  { label: "S", deg: 180 },
-  { label: "SSW", deg: 202.5 },
-  { label: "SW", deg: 225 },
-  { label: "WSW", deg: 247.5 },
-  { label: "W", deg: 270 },
-  { label: "WNW", deg: 292.5 },
-  { label: "NW", deg: 315 },
-  { label: "NNW", deg: 337.5 },
-];
-
 function closePolygonCoordinates(ring: [number, number][]): GeoJSON.Polygon | null {
   if (ring.length < 3) return null;
   const closed: [number, number][] = ring.map((p) => [...p] as [number, number]);
@@ -189,59 +184,6 @@ function outerRingOpenCoords(poly: GeoJSON.Polygon): [number, number][] {
 function areaFeatureId(f: Feature): string {
   const props = (f.properties ?? {}) as { id?: string };
   return String(f.id ?? props.id ?? "");
-}
-
-function floorToHourMs(d = new Date()): number {
-  const a = new Date(d);
-  a.setMinutes(0, 0, 0);
-  return a.getTime();
-}
-
-/** Value for `<input type="datetime-local" />` in local timezone. */
-function toDatetimeLocalInput(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function cardinalFromDeg(deg: number | null): string {
-  if (deg == null || Number.isNaN(deg)) return "—";
-  const d = ((deg % 360) + 360) % 360;
-  const idx = Math.round(d / 22.5) % 16;
-  return WIND_FROM_OPTIONS[idx]!.label;
-}
-
-/** Map / list: `4 (7) m/s ENE (66°)` — whole m/s, gust in parentheses (less “too exact” than decimals). */
-function windCompactSummary(w: {
-  speedMs: number | null;
-  gustMs: number | null;
-  dirFromDeg: number | null;
-}): string {
-  const sp = w.speedMs != null ? Math.round(w.speedMs) : null;
-  const gu = w.gustMs != null ? Math.round(w.gustMs) : null;
-  const fromC = cardinalFromDeg(w.dirFromDeg);
-  const deg = w.dirFromDeg != null ? Math.round(w.dirFromDeg) : null;
-  const windPart =
-    sp != null ? (gu != null ? `${sp} (${gu}) m/s` : `${sp} m/s`) : "— m/s";
-  return deg != null ? `${windPart} ${fromC} (${deg}°)` : `${windPart} ${fromC}`;
-}
-
-/** Second line when multi-spot forecast was used inside the polygon. */
-function windMultiPointSubtitle(w: RankedPracticeArea["wind"]): string | null {
-  const mp = w?.multiPoint;
-  if (!mp || mp.samples < 2) return null;
-  const bits: string[] = [];
-  if (
-    mp.speedMinMs != null &&
-    mp.speedMaxMs != null &&
-    Math.round(mp.speedMinMs) !== Math.round(mp.speedMaxMs)
-  ) {
-    bits.push(`${Math.round(mp.speedMinMs)}–${Math.round(mp.speedMaxMs)} m/s in area`);
-  }
-  bits.push(`${mp.samples} spots`);
-  if (mp.dirSpreadDeg != null && mp.dirSpreadDeg >= 12) {
-    bits.push(`dir ±${Math.round(mp.dirSpreadDeg)}°`);
-  }
-  return bits.join(" · ");
 }
 
 /** Great-circle distance in km (for wind-arrow preview length). */
@@ -294,102 +236,6 @@ function kmToScreenPx(km: number, latDeg: number, zoom: number): number {
   return (km * 1000) / metersPerPixelAtLatitude(latDeg, zoom);
 }
 
-const FORECAST_SLIDER_MAX_H = 120;
-
-type ToolSectionKey =
-  | "sport"
-  | "draw"
-  | "windRank"
-  | "basemap"
-  | "experiences"
-  | "forecast"
-  | "account";
-
-const ALL_TOOL_SECTIONS_OPEN: Record<ToolSectionKey, boolean> = {
-  sport: true,
-  draw: true,
-  windRank: true,
-  basemap: true,
-  experiences: true,
-  forecast: true,
-  account: true,
-};
-
-/** First visit: show sport + forecast (core planning path). */
-const DEFAULT_TOOL_SECTIONS: Record<ToolSectionKey, boolean> = {
-  sport: true,
-  draw: false,
-  windRank: false,
-  basemap: false,
-  experiences: false,
-  forecast: true,
-  account: false,
-};
-
-type SidebarTab = "plan" | "map" | "you";
-
-const SIDEBAR_TAB_STORAGE = "fjelllift-sidebar-tab";
-
-function toolKeysForTab(tab: SidebarTab): ToolSectionKey[] {
-  switch (tab) {
-    case "plan":
-      return ["sport", "forecast", "windRank"];
-    case "map":
-      return ["basemap"];
-    case "you":
-      return ["draw", "experiences", "account"];
-    default:
-      return [];
-  }
-}
-
-function CollapsibleSection({
-  title,
-  summary,
-  open,
-  onToggle,
-  variant = "default",
-  className = "",
-  children,
-}: {
-  title: string;
-  summary?: string;
-  open: boolean;
-  onToggle: () => void;
-  variant?: "default" | "accent";
-  className?: string;
-  children: ReactNode;
-}) {
-  const shell =
-    variant === "accent"
-      ? "rounded-2xl bg-teal-50/55 ring-1 ring-teal-200/45 shadow-sm shadow-teal-900/[0.04]"
-      : "rounded-2xl bg-white/75 ring-1 ring-teal-900/[0.07] shadow-sm shadow-teal-900/[0.04]";
-  return (
-    <section className={`mb-2 overflow-hidden ${shell} ${className}`.trim()}>
-      <button
-        type="button"
-        className="sticky top-0 z-[2] flex w-full items-start gap-2.5 rounded-t-2xl bg-white/88 px-3 py-2.5 text-left backdrop-blur-md transition-colors hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
-        onClick={onToggle}
-        aria-expanded={open}
-      >
-        <span
-          className={`mt-0.5 inline-block shrink-0 text-xs text-teal-700 transition-transform duration-200 ease-out ${open ? "rotate-180" : ""}`}
-          aria-hidden
-        >
-          ▼
-        </span>
-        <span className="min-w-0 flex-1">
-          <h2 className="text-sm font-semibold tracking-tight text-zinc-900">{title}</h2>
-          {!open && summary ? (
-            <span className="mt-0.5 block text-[11px] leading-snug text-zinc-500">{summary}</span>
-          ) : null}
-        </span>
-      </button>
-      {open ? <div className="space-y-2.5 px-3 pb-3.5 pt-0 text-sm">{children}</div> : null}
-    </section>
-  );
-}
-
 export function MapHub() {
   const { status } = useSession();
   const isAuthed = status === "authenticated";
@@ -415,7 +261,9 @@ export function MapHub() {
   const [reliefOpacity, setReliefOpacity] = useState(0.42);
   const [activeSport, setActiveSport] = useState<"kiteski" | "kitesurf">("kiteski");
   const [bundle, setBundle] = useState<Bundle | null>(null);
+  const [bundleLoading, setBundleLoading] = useState(true);
   const [ranked, setRanked] = useState<RankedPracticeArea[]>([]);
+  const [rankLoading, setRankLoading] = useState(true);
   const [forecastAnchorMs, setForecastAnchorMs] = useState(() => floorToHourMs());
   const [hoursAhead, setHoursAhead] = useState(0);
   const forecastAtIso = useMemo(
@@ -431,6 +279,11 @@ export function MapHub() {
   /** Shown in Plan when ranking fails so users are not stuck with an empty list and no explanation. */
   const [rankLoadError, setRankLoadError] = useState<string | null>(null);
   const [terrainClick, setTerrainClick] = useState<ClickTerrain | null>(null);
+  /** Screen position for terrain card (anchored to map click, updates on pan/zoom). */
+  const [terrainPopoverPos, setTerrainPopoverPos] = useState<{
+    left: number;
+    top: number;
+  } | null>(null);
   const [mapMode, setMapMode] = useState<"browse" | "draw" | "pickWind">("browse");
   const [drawRing, setDrawRing] = useState<[number, number][]>([]);
   const [drawAreaName, setDrawAreaName] = useState("");
@@ -498,6 +351,59 @@ export function MapHub() {
     setToolSectionsOpen((s) => ({ ...s, [key]: !s[key] }));
   }, []);
 
+  const [mapLayerToggles, setMapLayerToggles] = useState<MapLayerTogglesState>(() =>
+    defaultMapLayerToggles(),
+  );
+
+  useEffect(() => {
+    setMapLayerToggles(readMapLayerTogglesFromStorage());
+  }, []);
+
+  const patchMapLayerToggles = useCallback((patch: Partial<MapLayerTogglesState>) => {
+    setMapLayerToggles((prev) => {
+      const next = { ...prev, ...patch };
+      writeMapLayerTogglesToStorage(next);
+      return next;
+    });
+  }, []);
+
+  const browseInteractiveLayerIds = useMemo(() => {
+    if (mapMode !== "browse") return [];
+    const ids: string[] = ["areas-fill"];
+    if (mapLayerToggles.forecastSampleDots) {
+      ids.push("yr-forecast-point", "yr-forecast-point-halo");
+    }
+    return ids;
+  }, [mapMode, mapLayerToggles.forecastSampleDots]);
+
+  useEffect(() => {
+    if (!terrainClick) {
+      setTerrainPopoverPos(null);
+      return;
+    }
+    const map = mapRef.current?.getMap();
+    if (!map) return;
+    const { lng, lat } = terrainClick;
+    const sync = () => {
+      if (typeof window === "undefined") return;
+      const p = map.project([lng, lat]);
+      setTerrainPopoverPos(
+        terrainPopoverScreenPosition(p.x, p.y, window.innerWidth, window.innerHeight),
+      );
+    };
+    sync();
+    map.on("move", sync);
+    map.on("zoom", sync);
+    map.on("resize", sync);
+    window.addEventListener("resize", sync);
+    return () => {
+      map.off("move", sync);
+      map.off("zoom", sync);
+      map.off("resize", sync);
+      window.removeEventListener("resize", sync);
+    };
+  }, [terrainClick]);
+
   /** Centre map on ranked area centroid and select it (outline + edit panel). */
   const focusRankedAreaOnMap = useCallback((r: RankedPracticeArea) => {
     const map = mapRef.current?.getMap();
@@ -525,10 +431,15 @@ export function MapHub() {
   }, [basemap, reliefOpacity]);
 
   const loadBundle = useCallback(async () => {
-    const r = await fetch(`/api/map/bundle?activeSport=${activeSport}`);
-    if (!r.ok) return;
-    const j = (await r.json()) as Bundle;
-    setBundle(j);
+    setBundleLoading(true);
+    try {
+      const r = await fetch(`/api/map/bundle?activeSport=${activeSport}`);
+      if (!r.ok) return;
+      const j = (await r.json()) as Bundle;
+      setBundle(j);
+    } finally {
+      setBundleLoading(false);
+    }
   }, [activeSport]);
 
   useEffect(() => {
@@ -597,6 +508,7 @@ export function MapHub() {
 
   const loadRank = useCallback(async () => {
     setRankLoadError(null);
+    setRankLoading(true);
     const q = new URLSearchParams({
       sport: activeSport,
       at: forecastAtIso,
@@ -626,6 +538,8 @@ export function MapHub() {
       setRankLoadError(`Forecast ranking could not load: ${m}`);
       setMsg(`Forecast ranking failed. ${m}`);
       setRanked([]);
+    } finally {
+      setRankLoading(false);
     }
   }, [activeSport, forecastAtIso, optimalWindHalfWidthDeg]);
 
@@ -758,6 +672,7 @@ export function MapHub() {
       const score = rankMap.get(id) ?? 0;
       const sel = id === selectedPracticeAreaId ? 1 : 0;
       const isCommunity = props.isCommunity === 1 || props.isCommunity === true ? 1 : 0;
+      const hasMapSelection = selectedPracticeAreaId != null ? 1 : 0;
       return {
         ...f,
         properties: {
@@ -766,6 +681,7 @@ export function MapHub() {
           rankColor: rankColor(score),
           selectedPractice: sel,
           isCommunity,
+          hasMapSelection,
         },
       };
     });
@@ -1142,14 +1058,29 @@ export function MapHub() {
     return `${ranked.length} area(s) · ${rel}${scoringHint}`;
   }, [hoursAhead, ranked.length, sessionPending, isAuthed, rankingForm]);
 
+  const scoringSummaryCollapsed = useMemo(() => {
+    if (!rankingForm || !multiPointForm) return "Customize wind bands, sampling & weights";
+    const w = rankingForm[activeSport];
+    const modeLabel =
+      multiPointForm.mode === "off"
+        ? "centre only"
+        : multiPointForm.mode === "auto"
+          ? "auto multi-spot"
+          : "multi-spot on";
+    return `${w.minWindMs}–${w.maxWindMs} m/s · ${modeLabel}`;
+  }, [rankingForm, multiPointForm, activeSport]);
+
   return (
     <div className="relative h-screen w-full">
-      <div className="absolute left-2 top-2 z-10 flex max-w-[min(24rem,calc(100vw-1rem))] max-h-[92vh] min-h-0 flex-col text-sm">
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-teal-900/10 bg-white/90 shadow-xl shadow-teal-900/[0.07] backdrop-blur-md">
-          <div className="shrink-0 border-b border-teal-900/10 bg-gradient-to-br from-teal-50/90 via-white to-sky-50/35">
+      <div
+        className={`absolute left-2 top-2 flex max-w-[min(24rem,calc(100vw-1rem))] max-h-[92vh] min-h-0 flex-col text-sm ${hubOverlayZ.sidebar}`}
+        aria-busy={bundleLoading || rankLoading}
+      >
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-app-border bg-app-surface/90 shadow-[var(--app-shadow-hub)] backdrop-blur-md">
+          <div className="shrink-0 border-b border-app-border bg-gradient-to-br from-app-accent-soft via-app-surface to-app-surface-muted">
             <Link
               href="/"
-              className="flex w-full items-center justify-center px-4 py-4 outline-none transition hover:bg-white/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-teal-600"
+              className="flex w-full items-center justify-center px-4 py-4 outline-none transition hover:bg-app-surface/50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-app-accent"
               title="Fjell Lift — home"
             >
               <Image
@@ -1165,7 +1096,7 @@ export function MapHub() {
             <div
               role="tablist"
               aria-label="Tool groups"
-              className="mx-2.5 mb-2 flex gap-0.5 rounded-xl bg-teal-900/[0.075] p-1"
+              className="mx-2.5 mb-2 flex gap-0.5 rounded-xl bg-app-accent-muted p-1"
             >
               {(
                 [
@@ -1180,10 +1111,10 @@ export function MapHub() {
                   role="tab"
                   aria-selected={sidebarTab === id}
                   title={hint}
-                  className={`min-h-[40px] flex-1 rounded-lg px-1.5 py-2 text-center text-xs font-semibold transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600 ${
+                  className={`min-h-[40px] flex-1 rounded-lg px-1.5 py-2 text-center text-xs font-semibold transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent ${
                     sidebarTab === id
-                      ? "bg-white text-teal-900 shadow-sm ring-1 ring-teal-900/10"
-                      : "text-zinc-600 hover:bg-white/60 hover:text-teal-800"
+                      ? "bg-app-surface text-app-accent-hover shadow-sm ring-1 ring-app-border"
+                      : "text-app-fg-muted hover:bg-app-surface/80 hover:text-app-accent-hover"
                   }`}
                   onClick={() => setSidebarTab(id as SidebarTab)}
                 >
@@ -1194,21 +1125,21 @@ export function MapHub() {
             <div className="mx-2.5 mb-2.5 flex flex-wrap items-center justify-end gap-1">
               <button
                 type="button"
-                className="rounded-lg px-2 py-1 text-[10px] font-medium text-teal-800/90 transition-colors hover:bg-white/90"
+                className="rounded-lg px-2 py-1 text-[10px] font-medium text-app-accent-hover transition-colors hover:bg-app-surface/90"
                 onClick={() => expandCurrentTabSections()}
               >
                 Expand tab
               </button>
               <button
                 type="button"
-                className="rounded-lg px-2 py-1 text-[10px] font-medium text-zinc-500 transition-colors hover:bg-white/90"
+                className="rounded-lg px-2 py-1 text-[10px] font-medium text-app-fg-muted transition-colors hover:bg-app-surface/90"
                 onClick={() => collapseCurrentTabSections()}
               >
                 Collapse tab
               </button>
               <button
                 type="button"
-                className="rounded-lg px-2 py-1 text-[10px] font-medium text-zinc-400 transition-colors hover:bg-white/90"
+                className="rounded-lg px-2 py-1 text-[10px] font-medium text-app-fg-subtle transition-colors hover:bg-app-surface/90"
                 onClick={() => setToolSectionsOpen({ ...ALL_TOOL_SECTIONS_OPEN })}
                 title="Expand every section in every tab"
               >
@@ -1230,9 +1161,10 @@ export function MapHub() {
         >
           <div className="flex flex-wrap items-center gap-2">
             <select
+              aria-label="Active sport"
               value={activeSport}
               onChange={(e) => setActiveSport(e.target.value as "kiteski" | "kitesurf")}
-              className="w-full rounded-xl border border-teal-900/10 bg-white px-3 py-2 text-sm text-zinc-900 shadow-inner shadow-teal-900/[0.03] focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-600/20"
+              className="w-full rounded-xl border border-app-border-subtle bg-app-surface px-3 py-2 text-sm text-app-fg shadow-inner shadow-app-fg/5 focus:border-app-accent focus:outline-none focus:ring-2 focus:ring-app-accent/20"
             >
               <option value="kiteski">Kite ski</option>
               <option value="kitesurf">Kite surf</option>
@@ -1246,46 +1178,15 @@ export function MapHub() {
           open={toolSectionsOpen.forecast}
           onToggle={() => toggleToolSection("forecast")}
         >
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-zinc-800">Forecast time</span>
-            <input
-              type="range"
-              min={0}
-              max={FORECAST_SLIDER_MAX_H}
-              step={1}
-              value={hoursAhead}
-              onChange={(e) => setHoursAhead(Number(e.target.value))}
-              className="w-full accent-teal-600"
-            />
-            <p
-              className="text-xs font-medium text-zinc-800"
-              suppressHydrationWarning
-              title="Shown in your device timezone after load"
-            >
-              {new Date(forecastAtIso).toLocaleString(undefined, {
-                weekday: "short",
-                month: "short",
-                day: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-            </p>
-            <div className="flex flex-wrap items-center justify-between gap-1 text-[11px] text-zinc-600">
-              <span>
-                Anchor +{hoursAhead}h (max {FORECAST_SLIDER_MAX_H}h)
-              </span>
-              <button
-                type="button"
-                className="rounded-lg border border-teal-200/80 bg-white px-2 py-1 text-[10px] font-medium text-teal-900 hover:bg-teal-50/80"
-                onClick={() => {
-                  setForecastAnchorMs(floorToHourMs());
-                  setHoursAhead(0);
-                }}
-              >
-                Now
-              </button>
-            </div>
-            <p className="text-[10px] leading-snug text-zinc-500">
+          <ForecastTimeControl
+            hoursAhead={hoursAhead}
+            setHoursAhead={setHoursAhead}
+            forecastAtIso={forecastAtIso}
+            setForecastAnchorMs={setForecastAnchorMs}
+            floorToHourMs={floorToHourMs}
+          />
+          <HelpDisclosure title="How ranking & map work">
+            <p>
               Slider moves the forecast hour (Met.no / Yr in Europe with terrain elevation, otherwise
               Open-Meteo). Many small <strong>downwind</strong> SVG arrows sit <strong>under</strong> the tinted
               area fill (map rotation keeps them aligned with true north).{" "}
@@ -1297,95 +1198,79 @@ export function MapHub() {
               <strong>speed range</strong> and <strong>spot count</strong> when multi-point forecast runs
               (see scoring settings when signed in; guests use a smaller cap).
             </p>
-          </label>
+          </HelpDisclosure>
+          {rankLoadError && !rankLoading ? (
+            <div className="space-y-2">
+              <p className="rounded-xl bg-app-warning-bg p-2.5 text-[10px] leading-snug text-app-warning-fg ring-1 ring-app-warning-border">
+                {rankLoadError}
+                <span className="mt-1.5 block text-app-fg-muted">
+                  Practice polygons may still appear on the map once the view fits your areas. Check the
+                  terminal or network tab for <code className="rounded bg-white/60 px-0.5">/api/forecast/rank</code>.
+                </span>
+              </p>
+            </div>
+          ) : null}
+          {rankLoading && ranked.length === 0 && !rankLoadError ? (
+            <RankedListSkeleton />
+          ) : null}
           {ranked.length > 0 ? (
             <div className="space-y-1">
-              <p className="text-[10px] font-medium text-zinc-600">
+              {rankLoading ? (
+                <p className="text-[10px] text-app-fg-subtle" aria-live="polite">
+                  Updating ranking…
+                </p>
+              ) : null}
+              <p className="text-[10px] text-app-fg-muted" suppressHydrationWarning>
+                Ranking for{" "}
+                <time dateTime={forecastAtIso}>
+                  {new Date(forecastAtIso).toLocaleString(undefined, {
+                    weekday: "short",
+                    month: "short",
+                    day: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </time>
+                . Met.no / Yr in Europe (terrain elevation) where available; otherwise Open-Meteo.
+              </p>
+              <p className="text-[10px] font-medium text-app-fg-muted">
                 Areas (best score first) — tap to fly the map here
               </p>
-              <ul className="max-h-52 space-y-0 overflow-auto rounded-xl bg-teal-50/20 text-[11px] leading-snug text-zinc-700 ring-1 ring-teal-900/5">
-                {ranked.map((r, idx) => {
-                  const visLabel = r.wind ? formatVisibilityM(r.wind.visibilityM) : "—";
-                  const mpSub = windMultiPointSubtitle(r.wind);
-                  return (
-                  <li key={r.areaId} className="border-b border-teal-900/[0.06] last:border-0">
-                    <button
-                      type="button"
-                      className="w-full rounded-lg px-2 py-2 text-left transition-colors hover:bg-teal-100/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-teal-600"
-                      onClick={() => focusRankedAreaOnMap(r)}
-                    >
-                      <span className="flex items-start gap-2">
-                        <span className="w-5 shrink-0 pt-0.5 text-right font-mono text-[10px] text-zinc-400 tabular-nums">
-                          {idx + 1}.
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="font-medium text-zinc-900">
-                            {r.name.trim() ? r.name.trim() : `Area ${r.areaId.slice(0, 6)}`}
-                          </span>
-                          <span className="text-zinc-600">
-                            {" · score "}
-                            <strong className="text-zinc-900">{r.score}</strong>
-                            {r.wind ? (
-                              <>
-                                {" · "}
-                                {windCompactSummary(r.wind)}
-                                {visLabel !== "—" ? (
-                                  <>
-                                    {" · vis "}
-                                    {visLabel}
-                                  </>
-                                ) : null}
-                                {mpSub ? (
-                                  <span className="mt-0.5 block text-[10px] text-zinc-500">{mpSub}</span>
-                                ) : null}
-                              </>
-                            ) : (
-                              <span className="text-zinc-400"> · no forecast</span>
-                            )}
-                          </span>
-                        </span>
-                      </span>
-                    </button>
-                  </li>
-                  );
-                })}
+              <ul className="max-h-52 space-y-0 overflow-auto rounded-xl bg-app-surface-muted text-[11px] leading-snug text-app-fg-muted ring-1 ring-app-border-subtle">
+                {ranked.map((r, idx) => (
+                  <RankedAreaRow
+                    key={r.areaId}
+                    area={r}
+                    index={idx}
+                    onSelect={focusRankedAreaOnMap}
+                  />
+                ))}
               </ul>
             </div>
-          ) : (
-            <div className="space-y-2">
-              {rankLoadError ? (
-                <p className="rounded-xl bg-amber-50/90 p-2.5 text-[10px] leading-snug text-amber-950 ring-1 ring-amber-200/80">
-                  {rankLoadError}
-                  <span className="mt-1.5 block text-zinc-600">
-                    Practice polygons may still appear on the map once the view fits your areas. Check the
-                    terminal or network tab for <code className="rounded bg-white/60 px-0.5">/api/forecast/rank</code>.
-                  </span>
-                </p>
-              ) : (
-                <p className="text-[10px] text-zinc-500">
-                  {isAuthed
-                    ? "No ranked areas yet — add a practice polygon or mark an area public."
-                    : "No public areas for this sport yet — check the other sport or sign in to explore private spots you have saved."}
-                </p>
-              )}
-            </div>
-          )}
+          ) : !rankLoading && !rankLoadError ? (
+            <p className="text-[10px] text-app-fg-subtle">
+              {isAuthed
+                ? "No ranked areas yet — add a practice polygon or mark an area public."
+                : "No public areas for this sport yet — check the other sport or sign in to explore private spots you have saved."}
+            </p>
+          ) : null}
           {isAuthed ? (
             rankingPrefsLoading || !rankingForm || !multiPointForm ? (
-              <p className="mt-3 text-[10px] text-zinc-500">Loading your scoring settings…</p>
+              <ScoringPrefsSkeleton />
             ) : (
-              <div className="mt-3 space-y-3 rounded-2xl border border-teal-200/80 bg-teal-50/30 p-3 ring-1 ring-teal-900/[0.06]">
-                <p className="text-[11px] font-semibold text-zinc-800">
-                  Your forecast scoring — {activeSport === "kiteski" ? "kite ski" : "kite surf"}
-                </p>
-                <p className="text-[10px] leading-snug text-zinc-600">
+              <PersistedCollapsible
+                title={`Your forecast scoring — ${activeSport === "kiteski" ? "kite ski" : "kite surf"}`}
+                summaryCollapsed={scoringSummaryCollapsed}
+                storageKey="mapHub.scoringPrefsExpanded"
+              >
+                <p className="text-[10px] leading-snug text-app-fg-muted">
                   Wind speed window and ideal band set how strongly forecast speed matches your sport.
                   Weights scale wind fit, gust penalty, and how much direction matters before the
                   experience boost.
                 </p>
-                <div className="rounded-xl border border-sky-200/80 bg-sky-50/40 p-2.5 ring-1 ring-sky-900/[0.04]">
-                  <p className="text-[10px] font-semibold text-sky-950">Area forecast sampling</p>
-                  <p className="mt-1 text-[10px] leading-snug text-sky-900/90">
+                <div className="rounded-xl border border-app-info-border bg-app-info-bg p-2.5 ring-1 ring-app-border-subtle">
+                  <p className="text-[10px] font-semibold text-app-info-fg-strong">Area forecast sampling</p>
+                  <p className="mt-1 text-[10px] leading-snug text-app-info-fg">
                     <strong>Auto</strong> adds extra API calls when the polygon is wide (≈3+ km) or
                     terrain varies a lot inside it. <strong>On</strong> always samples up to your max
                     spots. <strong>Conservative</strong> scoring uses the weakest wind and strictest
@@ -1394,7 +1279,7 @@ export function MapHub() {
                   </p>
                   <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
                     <label className="flex flex-col gap-0.5">
-                      <span className="text-[10px] font-medium text-sky-950">Mode</span>
+                      <span className="text-[10px] font-medium text-app-info-fg-strong">Mode</span>
                       <select
                         value={multiPointForm.mode}
                         onChange={(e) =>
@@ -1407,7 +1292,7 @@ export function MapHub() {
                               : p,
                           )
                         }
-                        className="rounded-lg border border-sky-900/15 bg-white px-2 py-1 text-xs text-zinc-900"
+                        className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-xs text-app-fg"
                       >
                         <option value="off">Off (centre only)</option>
                         <option value="auto">Auto (large / hilly areas)</option>
@@ -1415,7 +1300,7 @@ export function MapHub() {
                       </select>
                     </label>
                     <label className="flex flex-col gap-0.5">
-                      <span className="text-[10px] font-medium text-sky-950">Max spots (3–9)</span>
+                      <span className="text-[10px] font-medium text-app-info-fg-strong">Max spots (3–9)</span>
                       <input
                         type="number"
                         min={3}
@@ -1429,11 +1314,11 @@ export function MapHub() {
                             p ? { ...p, maxSamples: Math.min(9, Math.max(3, v)) } : p,
                           );
                         }}
-                        className="rounded-lg border border-sky-900/15 bg-white px-2 py-1 text-xs text-zinc-900"
+                        className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-xs text-app-fg"
                       />
                     </label>
                     <label className="flex flex-col gap-0.5">
-                      <span className="text-[10px] font-medium text-sky-950">Collapse policy</span>
+                      <span className="text-[10px] font-medium text-app-info-fg-strong">Collapse policy</span>
                       <select
                         value={multiPointForm.scoringPolicy}
                         onChange={(e) =>
@@ -1447,7 +1332,7 @@ export function MapHub() {
                               : p,
                           )
                         }
-                        className="rounded-lg border border-sky-900/15 bg-white px-2 py-1 text-xs text-zinc-900"
+                        className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-xs text-app-fg"
                       >
                         <option value="conservative">Conservative (min wind / strict dir)</option>
                         <option value="representative">Representative (median / mean dir)</option>
@@ -1457,7 +1342,7 @@ export function MapHub() {
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <label className="flex flex-col gap-0.5">
-                    <span className="text-[10px] font-medium text-zinc-700">Min wind (m/s)</span>
+                    <span className="text-[10px] font-medium text-app-fg-muted">Min wind (m/s)</span>
                     <input
                       type="number"
                       min={0.5}
@@ -1468,11 +1353,11 @@ export function MapHub() {
                         const v = Number(e.target.value);
                         if (Number.isFinite(v)) patchActiveSportRanking({ minWindMs: v });
                       }}
-                      className="rounded-lg border border-teal-900/15 bg-white px-2 py-1 text-xs text-zinc-900"
+                      className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-xs text-app-fg"
                     />
                   </label>
                   <label className="flex flex-col gap-0.5">
-                    <span className="text-[10px] font-medium text-zinc-700">Max wind (m/s)</span>
+                    <span className="text-[10px] font-medium text-app-fg-muted">Max wind (m/s)</span>
                     <input
                       type="number"
                       min={0.5}
@@ -1483,11 +1368,11 @@ export function MapHub() {
                         const v = Number(e.target.value);
                         if (Number.isFinite(v)) patchActiveSportRanking({ maxWindMs: v });
                       }}
-                      className="rounded-lg border border-teal-900/15 bg-white px-2 py-1 text-xs text-zinc-900"
+                      className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-xs text-app-fg"
                     />
                   </label>
                   <label className="flex flex-col gap-0.5">
-                    <span className="text-[10px] font-medium text-zinc-700">Ideal min (m/s)</span>
+                    <span className="text-[10px] font-medium text-app-fg-muted">Ideal min (m/s)</span>
                     <input
                       type="number"
                       min={0.5}
@@ -1498,11 +1383,11 @@ export function MapHub() {
                         const v = Number(e.target.value);
                         if (Number.isFinite(v)) patchActiveSportRanking({ idealMinMs: v });
                       }}
-                      className="rounded-lg border border-teal-900/15 bg-white px-2 py-1 text-xs text-zinc-900"
+                      className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-xs text-app-fg"
                     />
                   </label>
                   <label className="flex flex-col gap-0.5">
-                    <span className="text-[10px] font-medium text-zinc-700">Ideal max (m/s)</span>
+                    <span className="text-[10px] font-medium text-app-fg-muted">Ideal max (m/s)</span>
                     <input
                       type="number"
                       min={0.5}
@@ -1513,12 +1398,12 @@ export function MapHub() {
                         const v = Number(e.target.value);
                         if (Number.isFinite(v)) patchActiveSportRanking({ idealMaxMs: v });
                       }}
-                      className="rounded-lg border border-teal-900/15 bg-white px-2 py-1 text-xs text-zinc-900"
+                      className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-xs text-app-fg"
                     />
                   </label>
                 </div>
                 <label className="flex flex-col gap-1">
-                  <span className="text-[10px] font-medium text-zinc-700">
+                  <span className="text-[10px] font-medium text-app-fg-muted">
                     Wind speed fit weight ×{rankingForm[activeSport].windFitScale.toFixed(2)}
                   </span>
                   <input
@@ -1530,11 +1415,11 @@ export function MapHub() {
                     onChange={(e) =>
                       patchActiveSportRanking({ windFitScale: Number(e.target.value) })
                     }
-                    className="w-full accent-teal-600"
+                    className="w-full accent-app-accent"
                   />
                 </label>
                 <label className="flex flex-col gap-1">
-                  <span className="text-[10px] font-medium text-zinc-700">
+                  <span className="text-[10px] font-medium text-app-fg-muted">
                     Gust penalty ×{rankingForm[activeSport].gustPenaltyScale.toFixed(2)} (0 = ignore gusts)
                   </span>
                   <input
@@ -1546,11 +1431,11 @@ export function MapHub() {
                     onChange={(e) =>
                       patchActiveSportRanking({ gustPenaltyScale: Number(e.target.value) })
                     }
-                    className="w-full accent-teal-600"
+                    className="w-full accent-app-accent"
                   />
                 </label>
                 <label className="flex flex-col gap-1">
-                  <span className="text-[10px] font-medium text-zinc-700">
+                  <span className="text-[10px] font-medium text-app-fg-muted">
                     Direction emphasis {(rankingForm[activeSport].directionEmphasis * 100).toFixed(0)}%
                     (0 = ignore direction match)
                   </span>
@@ -1563,30 +1448,30 @@ export function MapHub() {
                     onChange={(e) =>
                       patchActiveSportRanking({ directionEmphasis: Number(e.target.value) })
                     }
-                    className="w-full accent-teal-600"
+                    className="w-full accent-app-accent"
                   />
                 </label>
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    className="rounded-xl border border-teal-600/40 bg-teal-600 px-3 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-teal-700"
+                    className={hubBtnPrimary}
                     onClick={() => void saveRankingPrefsForActiveSport()}
                   >
                     Save scoring &amp; sampling
                   </button>
                   <button
                     type="button"
-                    className="rounded-xl border border-teal-900/15 bg-white px-3 py-2 text-[11px] font-medium text-zinc-800 hover:bg-teal-50/80"
+                    className={hubBtnSecondary}
                     onClick={() => void resetRankingPrefsForActiveSport()}
                   >
                     Use defaults (this sport)
                   </button>
                 </div>
-              </div>
+              </PersistedCollapsible>
             )
           ) : (
-            <p className="mt-3 text-[10px] leading-snug text-zinc-500">
-              <Link href="/login" className="font-medium text-teal-800 underline-offset-2 hover:underline">
+            <p className="mt-3 text-[10px] leading-snug text-app-fg-subtle">
+              <Link href="/login" className="font-medium text-app-accent-hover underline-offset-2 hover:underline">
                 Sign in
               </Link>{" "}
               to set your own wind bands and scoring weights for the ranked list.
@@ -1601,23 +1486,23 @@ export function MapHub() {
           onToggle={() => toggleToolSection("windRank")}
         >
           <div className="flex flex-col gap-2">
-            <p className="text-[11px] leading-snug text-zinc-600">
+            <p className="text-[11px] leading-snug text-app-fg-muted">
               Optimal wind is <strong>per practice area</strong> only. Open an area →{" "}
               <strong>Edit area</strong> to draw direction on the map or type degrees. Areas without
               an optimal get <strong>no direction penalty</strong> (unless you use saved wind sectors).
             </p>
-            <p className="text-[11px] leading-snug text-zinc-600">
+            <p className="text-[11px] leading-snug text-app-fg-muted">
               <strong>Multi-spot forecast</strong> (when enabled) fetches several grid-aligned points
               inside each polygon with per-spot elevation for Met.no. Scores combine those samples:
               conservative mode penalises using the lowest wind speed and the worst direction match;
               gust penalty uses the strongest gust vs median speed.
             </p>
             {mapMode === "pickWind" ? (
-              <div className="space-y-2 rounded-2xl border border-violet-200/80 bg-gradient-to-b from-violet-50/95 to-white/90 p-3 shadow-inner shadow-violet-900/5">
-                <p className="text-[10px] font-medium text-violet-950">
+              <div className="space-y-2 rounded-2xl border border-app-border bg-gradient-to-b from-app-accent-soft to-app-surface p-3 shadow-inner shadow-app-fg/5">
+                <p className="text-[10px] font-medium text-app-accent-hover">
                   Saving to the open practice area — see the edit panel for tips.
                 </p>
-                <p className="text-[11px] leading-snug text-violet-950">
+                <p className="text-[11px] leading-snug text-app-fg">
                   {windPickStart == null ? (
                     <>
                       <strong>1.</strong> Click the <strong>tail</strong> of the arrow (upwind / where
@@ -1632,20 +1517,20 @@ export function MapHub() {
                 </p>
                 <button
                   type="button"
-                  className="w-full rounded-xl border border-violet-300/80 bg-white px-2 py-2 text-[11px] font-medium text-violet-900 hover:bg-violet-50"
+                  className={`w-full ${hubBtnSecondary}`}
                   onClick={() => cancelPickWind()}
                 >
                   Cancel drawing
                 </button>
-                <p className="text-[10px] text-violet-800/90">
-                  <kbd className="rounded-md bg-violet-200/80 px-1 py-0.5">Esc</kbd> cancel · right-click
+                <p className="text-[10px] text-app-fg-muted">
+                  <kbd className="rounded-md bg-app-accent-muted px-1 py-0.5">Esc</kbd> cancel · right-click
                   resets tail
                 </p>
               </div>
             ) : null}
           </div>
           <label className="mt-2 flex flex-col gap-1">
-            <span className="text-xs font-medium text-zinc-700">
+            <span className="text-xs font-medium text-app-fg-muted">
               Match width ±{optimalWindHalfWidthDeg}° (~{Math.round((optimalWindHalfWidthDeg / 180) * 100)}%
               of half-circle)
             </span>
@@ -1655,19 +1540,19 @@ export function MapHub() {
               max={90}
               value={optimalWindHalfWidthDeg}
               onChange={(e) => setOptimalWindHalfWidthDeg(Number(e.target.value))}
-              className="w-full"
+              className="w-full accent-app-accent"
             />
-            <span className="text-[10px] leading-snug text-zinc-500">
+            <span className="text-[10px] leading-snug text-app-fg-subtle">
               Full direction score when forecast is within this window of each area’s saved optimal.
               Wider = more forgiving; also scales the bonus inside saved wind sectors.
             </span>
           </label>
-          <p className="mt-2 text-[10px] leading-snug text-zinc-500">
+          <p className="mt-2 text-[10px] leading-snug text-app-fg-subtle">
             When a practice area is selected and has an optimal, a short <strong>downwind</strong> arrow
             is shown from that area’s centre (inside the polygon).
           </p>
           <label className="mt-1 flex flex-col gap-1">
-            <span className="text-xs font-medium text-zinc-700">
+            <span className="text-xs font-medium text-app-fg-muted">
               Saved-area sector half-width: {sectorHalfWidthDeg}°
             </span>
             <input
@@ -1676,32 +1561,32 @@ export function MapHub() {
               max={90}
               value={sectorHalfWidthDeg}
               onChange={(e) => setSectorHalfWidthDeg(Number(e.target.value))}
-              className="w-full"
+              className="w-full accent-app-accent"
             />
-            <span className="text-[10px] text-zinc-500">
+            <span className="text-[10px] text-app-fg-subtle">
               Used in <strong>Edit area</strong> when saving a wind sector arc around the area’s optimal
               bearing.
             </span>
           </label>
-          <p className="mt-2 text-[10px] leading-snug text-zinc-500">
+          <p className="mt-2 text-[10px] leading-snug text-app-fg-subtle">
             Min/max wind, ideal band, and score weights are in <strong>Forecast &amp; ranked areas</strong>{" "}
             above. This section is for direction match width and drawing optimal wind on the map.
           </p>
-          <div className="flex flex-wrap gap-2 text-[10px] text-zinc-600">
+          <div className="flex flex-wrap gap-2 text-[10px] text-app-fg-muted">
             <span className="inline-flex items-center gap-1">
-              <span className="h-2 w-4 rounded-sm" style={{ background: "#22c55e" }} />
+              <span className="h-2 w-4 rounded-sm bg-[var(--app-rank-strong)]" />
               strong
             </span>
             <span className="inline-flex items-center gap-1">
-              <span className="h-2 w-4 rounded-sm" style={{ background: "#eab308" }} />
+              <span className="h-2 w-4 rounded-sm bg-[var(--app-rank-ok)]" />
               ok
             </span>
             <span className="inline-flex items-center gap-1">
-              <span className="h-2 w-4 rounded-sm" style={{ background: "#f97316" }} />
+              <span className="h-2 w-4 rounded-sm bg-[var(--app-rank-weak)]" />
               weak
             </span>
             <span className="inline-flex items-center gap-1">
-              <span className="h-2 w-4 rounded-sm" style={{ background: "#94a3b8" }} />
+              <span className="h-2 w-4 rounded-sm bg-[var(--app-rank-poor)]" />
               poor
             </span>
           </div>
@@ -1720,7 +1605,7 @@ export function MapHub() {
             <select
               value={basemap}
               onChange={(e) => setBasemap(e.target.value as BasemapId)}
-              className="w-full rounded-xl border border-teal-900/10 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-600/20"
+              className="w-full rounded-xl border border-app-border-subtle bg-app-surface px-3 py-2 text-sm text-app-fg focus:border-app-accent focus:outline-none focus:ring-2 focus:ring-app-accent/20"
             >
               <option value="hybrid">Hybrid — OSM detail + topo relief &amp; contours</option>
               <option value="osm">OSM — maximum road/path detail</option>
@@ -1730,7 +1615,7 @@ export function MapHub() {
                 <option value="maptiler_outdoor">MapTiler Outdoor (API key)</option>
               ) : null}
             </select>
-            <p className="text-[11px] leading-snug text-zinc-500">
+            <p className="text-[11px] leading-snug text-app-fg-subtle">
               <strong>Height:</strong> click the map for elevation (Open-Meteo).{" "}
               <strong>Forest / openness:</strong> use <em>Topo</em> or <em>Hybrid</em> for wooded
               shading and relief; <em>Satellite</em> shows tree cover visually.
@@ -1738,18 +1623,24 @@ export function MapHub() {
           </label>
           {(basemap === "hybrid" || (basemap === "maptiler_outdoor" && !maptilerOutdoorStyleUrl())) && (
             <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-zinc-700">Topo overlay strength</span>
+              <span className="text-xs font-medium text-app-fg-muted">Topo overlay strength</span>
               <input
                 type="range"
                 min={0}
                 max={100}
                 value={Math.round(reliefOpacity * 100)}
                 onChange={(e) => setReliefOpacity(Number(e.target.value) / 100)}
-                className="w-full accent-teal-600"
+                className="w-full accent-app-accent"
               />
             </label>
           )}
         </CollapsibleSection>
+        <MapLayerOverlaysSection
+          toolSectionsOpen={{ overlays: toolSectionsOpen.overlays }}
+          toggleToolSection={toggleToolSection}
+          mapLayerToggles={mapLayerToggles}
+          onPatchMapLayerToggles={patchMapLayerToggles}
+        />
               </>
             )}
             {sidebarTab === "you" && (
@@ -1769,29 +1660,29 @@ export function MapHub() {
           onToggle={() => toggleToolSection("draw")}
         >
           {sessionPending ? (
-            <p className="text-[11px] text-zinc-500">Checking session…</p>
+            <p className="text-[11px] text-app-fg-subtle">Checking session…</p>
           ) : !isAuthed ? (
-            <p className="text-[11px] leading-snug text-zinc-600">
+            <p className="text-[11px] leading-snug text-app-fg-muted">
               Anyone can browse <strong>public</strong> areas.{" "}
-              <Link href="/login" className="font-medium text-teal-700 underline hover:text-teal-900">
+              <Link href="/login" className="font-medium text-app-accent-hover underline hover:text-app-fg">
                 Sign in
               </Link>{" "}
               to add your own spots.
             </p>
           ) : (
             <>
-              <p className="text-[11px] leading-snug text-zinc-600">
+              <p className="text-[11px] leading-snug text-app-fg-muted">
                 Uses forecast at polygon centre and each area’s wind settings (set under{" "}
                 <strong>Edit area</strong>).
               </p>
               <label className="flex flex-col gap-1">
-                <span className="text-[11px] font-medium text-zinc-700">Name for new drawings</span>
+                <span className="text-[11px] font-medium text-app-fg-muted">Name for new drawings</span>
                 <input
                   type="text"
                   value={drawAreaName}
                   onChange={(e) => setDrawAreaName(e.target.value.slice(0, 120))}
                   placeholder="e.g. West beach"
-                  className="rounded-xl border border-teal-900/10 bg-white px-3 py-2 text-xs text-zinc-900 focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-600/20"
+                  className="rounded-xl border border-app-border-subtle bg-app-surface px-3 py-2 text-xs text-app-fg focus:border-app-accent focus:outline-none focus:ring-2 focus:ring-app-accent/20"
                   maxLength={120}
                 />
               </label>
@@ -1799,7 +1690,7 @@ export function MapHub() {
                 {mapMode === "browse" ? (
                   <button
                     type="button"
-                    className="rounded-xl bg-teal-700 px-3 py-2 text-xs font-semibold text-white shadow-sm shadow-teal-900/15 hover:bg-teal-800"
+                    className={hubBtnPrimary}
                     onClick={() => {
                       setWindPickStart(null);
                       setWindPickHover(null);
@@ -1816,7 +1707,7 @@ export function MapHub() {
                   <>
                     <button
                       type="button"
-                      className="rounded-xl bg-zinc-800 px-3 py-2 text-xs font-medium text-white hover:bg-zinc-900"
+                      className={hubBtnPrimary}
                       disabled={loading}
                       onClick={() => void finishDrawing()}
                     >
@@ -1824,7 +1715,7 @@ export function MapHub() {
                     </button>
                     <button
                       type="button"
-                      className="rounded-xl border border-zinc-300 bg-white px-2 py-2 text-xs hover:bg-zinc-50"
+                      className={hubBtnSecondaryToolbar}
                       onClick={() => setDrawRing((r) => r.slice(0, -1))}
                       disabled={drawRing.length === 0}
                     >
@@ -1832,7 +1723,7 @@ export function MapHub() {
                     </button>
                     <button
                       type="button"
-                      className="rounded-xl border border-zinc-300 bg-white px-2 py-2 text-xs hover:bg-zinc-50"
+                      className={hubBtnSecondaryToolbar}
                       onClick={() => {
                         setDrawRing([]);
                         setMapMode("browse");
@@ -1845,12 +1736,12 @@ export function MapHub() {
                 )}
               </div>
               {mapMode === "draw" && (
-                <p className="text-[11px] text-zinc-600">
+                <p className="text-[11px] text-app-fg-muted">
                   {editingAreaId ? (
-                    <span className="font-medium text-amber-800">Editing boundary · </span>
+                    <span className="font-medium text-app-warning-fg">Editing boundary · </span>
                   ) : null}
                   {drawRing.length} point{drawRing.length === 1 ? "" : "s"} · click map for corners ·{" "}
-                  <kbd className="rounded-md bg-zinc-200/90 px-1 py-0.5 text-[10px]">Esc</kbd> cancels
+                  <kbd className={hubKbd}>Esc</kbd> cancels
                 </p>
               )}
             </>
@@ -1871,24 +1762,24 @@ export function MapHub() {
           variant="accent"
         >
           {sessionPending ? (
-            <p className="text-[11px] text-zinc-500">Checking session…</p>
+            <p className="text-[11px] text-app-fg-subtle">Checking session…</p>
           ) : !isAuthed ? (
-            <p className="text-[11px] leading-snug text-zinc-700">
-              <Link href="/login" className="font-medium text-teal-800 underline hover:text-teal-950">
+            <p className="text-[11px] leading-snug text-app-fg-muted">
+              <Link href="/login" className="font-medium text-app-accent-hover underline hover:text-app-fg">
                 Sign in
               </Link>{" "}
               to log sessions and get personalized ranking boosts on your areas.
             </p>
           ) : (
             <>
-          <p className="text-[10px] leading-snug text-zinc-700">
+          <p className="text-[10px] leading-snug text-app-fg-muted">
             Add when and where you went (active sport:{" "}
             <strong>{activeSport === "kiteski" ? "Kite ski" : "Kite surf"}</strong>). We pull archive
             wind at the area centre; when forecast matches those buckets, areas with good sessions get a
             small score boost (needs at least two matching experiences per area).
           </p>
           <form
-            className="flex flex-col gap-2 border-t border-teal-200/80 pt-2"
+            className="flex flex-col gap-2 border-t border-app-border pt-2"
             onSubmit={(e) => {
               e.preventDefault();
               const fd = new FormData(e.currentTarget);
@@ -1931,7 +1822,7 @@ export function MapHub() {
               })();
             }}
           >
-            <label className="text-[11px] font-medium text-zinc-800">
+            <label className="text-[11px] font-medium text-app-fg">
               When
               <input
                 key={clientReady ? "occurredAt" : "occurredAt-pending"}
@@ -1939,15 +1830,15 @@ export function MapHub() {
                 name="occurredAt"
                 required
                 defaultValue={clientReady ? toDatetimeLocalInput(new Date()) : ""}
-                className="mt-0.5 w-full rounded border px-2 py-1 text-xs"
+                className={hubInputNative}
               />
             </label>
-            <label className="text-[11px] font-medium text-zinc-800">
+            <label className="text-[11px] font-medium text-app-fg">
               Area
               <select
                 name="practiceAreaId"
                 required
-                className="mt-0.5 w-full rounded border px-2 py-1 text-xs"
+                className={hubInputNative}
                 disabled={!bundle?.practiceAreas?.features.length}
               >
                 <option value="">Select area…</option>
@@ -1963,11 +1854,11 @@ export function MapHub() {
                 })}
               </select>
             </label>
-            <label className="text-[11px] font-medium text-zinc-800">
+            <label className="text-[11px] font-medium text-app-fg">
               How were conditions?
               <select
                 name="sessionSuitability"
-                className="mt-0.5 w-full rounded border px-2 py-1 text-xs"
+                className={hubInputNative}
                 defaultValue="suitable"
               >
                 <option value="ideal">Ideal</option>
@@ -1979,17 +1870,17 @@ export function MapHub() {
             <button
               type="submit"
               disabled={loading || !bundle?.practiceAreas?.features.length}
-              className="rounded bg-teal-700 px-2 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+              className={hubBtnPrimary}
             >
               Save experience
             </button>
           </form>
           {experiences.length > 0 ? (
-            <ul className="max-h-40 space-y-1 overflow-y-auto border-t border-teal-200/80 pt-2 text-[10px] text-zinc-700">
+            <ul className="max-h-40 space-y-1 overflow-y-auto border-t border-app-border pt-2 text-[10px] text-app-fg-muted">
               {experiences.map((ex) => (
                 <li
                   key={ex.id}
-                  className="flex items-start justify-between gap-1 rounded border border-zinc-200/80 bg-white/80 px-1.5 py-1"
+                  className={hubListRow}
                 >
                   <span className="min-w-0 flex-1 leading-snug">
                     <span className="font-medium">{ex.practiceAreaName}</span>
@@ -2013,7 +1904,7 @@ export function MapHub() {
                   </span>
                   <button
                     type="button"
-                    className="shrink-0 text-[10px] text-red-600 hover:underline"
+                    className="shrink-0 text-[10px] text-app-danger hover:underline"
                     onClick={() => {
                       setLoading(true);
                       void (async () => {
@@ -2037,7 +1928,7 @@ export function MapHub() {
               ))}
             </ul>
           ) : (
-            <p className="text-[10px] text-zinc-500">No experiences for this sport yet.</p>
+            <p className="text-[10px] text-app-fg-subtle">No experiences for this sport yet.</p>
           )}
             </>
           )}
@@ -2058,23 +1949,23 @@ export function MapHub() {
           onToggle={() => toggleToolSection("account")}
         >
           {sessionPending ? (
-            <p className="text-xs text-zinc-500">Checking session…</p>
+            <p className="text-xs text-app-fg-subtle">Checking session…</p>
           ) : isAuthed ? (
             <>
-              {msg && <p className="text-xs text-zinc-600">{msg}</p>}
+              {msg && <p className="text-xs text-app-fg-muted">{msg}</p>}
               <button
                 type="button"
-                className="text-left text-xs font-medium text-teal-700 underline decoration-teal-700/50 underline-offset-2 hover:text-teal-900"
+                className="text-left text-xs font-medium text-app-accent-hover underline decoration-app-accent/50 underline-offset-2 hover:text-app-fg"
                 onClick={() => void signOut({ callbackUrl: "/login" })}
               >
                 Sign out
               </button>
             </>
           ) : (
-            <p className="text-xs leading-snug text-zinc-600">
+            <p className="text-xs leading-snug text-app-fg-muted">
               <Link
                 href="/login"
-                className="font-medium text-teal-700 underline decoration-teal-700/50 underline-offset-2 hover:text-teal-900"
+                className="font-medium text-app-accent-hover underline decoration-app-accent/50 underline-offset-2 hover:text-app-fg"
               >
                 Sign in
               </Link>{" "}
@@ -2086,96 +1977,47 @@ export function MapHub() {
             )}
           </div>
           <nav
-            className="shrink-0 border-t border-teal-900/10 bg-white/60 px-2 py-2 text-center text-[10px] text-zinc-500 backdrop-blur-sm"
+            className="shrink-0 border-t border-app-border bg-app-surface/60 px-2 py-2 text-center text-[10px] text-app-fg-subtle backdrop-blur-sm"
             aria-label="Legal"
           >
             <Link
               href="/terms"
-              className="font-medium text-teal-700/95 hover:text-teal-900 hover:underline"
+              className="font-medium text-app-accent-hover hover:text-app-fg hover:underline"
             >
               Terms of use
             </Link>
-            <span className="text-zinc-400" aria-hidden>
+            <span className="text-app-fg-subtle" aria-hidden>
               {" · "}
             </span>
             <Link
               href="/privacy"
-              className="font-medium text-teal-700/95 hover:text-teal-900 hover:underline"
+              className="font-medium text-app-accent-hover hover:text-app-fg hover:underline"
             >
               Privacy &amp; GDPR
+            </Link>
+            <span className="text-app-fg-subtle" aria-hidden>
+              {" · "}
+            </span>
+            <Link
+              href="/help"
+              className="font-medium text-app-accent-hover hover:text-app-fg hover:underline"
+            >
+              Help
             </Link>
           </nav>
         </div>
       </div>
 
-      {terrainClick && (
-        <div className="absolute bottom-2 left-2 z-10 max-w-xs rounded-2xl border border-teal-900/10 bg-white/95 p-3 text-xs shadow-lg shadow-teal-900/10 backdrop-blur-sm">
-          <div className="flex justify-between gap-2">
-            <span className="font-medium">Terrain</span>
-            <button
-              type="button"
-              className="text-zinc-500"
-              onClick={() => setTerrainClick(null)}
-              aria-label="Close"
-            >
-              ✕
-            </button>
-          </div>
-          <p className="mt-1 font-mono text-[11px] text-zinc-600">
-            {terrainClick.lat.toFixed(5)}, {terrainClick.lng.toFixed(5)}
-          </p>
-          {terrainClick.loading ? (
-            <p className="text-zinc-500">Elevation…</p>
-          ) : terrainClick.error ? (
-            <p className="text-red-600">{terrainClick.error}</p>
-          ) : (
-            <p className="text-zinc-800">
-              <strong>{terrainClick.elevationM != null ? `${Math.round(terrainClick.elevationM)} m` : "—"}</strong>{" "}
-              AMSL
-            </p>
-          )}
-          <div className="mt-2 flex flex-col gap-1.5">
-            <a
-              href={yrNoHourlyTableUrlEn(terrainClick.lat, terrainClick.lng)}
-              target="_blank"
-              rel="noopener noreferrer"
-              title="Opens yr.no in a new tab"
-              aria-label="Open Yr.no hourly forecast in a new tab"
-              className="flex items-center justify-center gap-2 rounded-lg bg-sky-600 px-2.5 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-sky-700"
-            >
-              <img
-                src="/yr-external.ico"
-                alt=""
-                width={18}
-                height={18}
-                decoding="async"
-                className="h-[18px] w-[18px] shrink-0 rounded-[4px] bg-white/10 ring-1 ring-white/25"
-              />
-              <span className="min-w-0 text-center leading-tight">Hourly forecast (point)</span>
-              <ExternalTabIcon className="h-3 w-3 shrink-0 opacity-90" />
-            </a>
-            <a
-              href={yrNoDailyTableUrlEn(terrainClick.lat, terrainClick.lng)}
-              target="_blank"
-              rel="noopener noreferrer"
-              title="Opens yr.no in a new tab"
-              aria-label="Open Yr.no long-term table in a new tab"
-              className="flex items-center justify-center gap-2 text-center text-[10px] font-medium text-sky-800 underline-offset-2 hover:underline"
-            >
-              <img
-                src="/yr-external.ico"
-                alt=""
-                width={16}
-                height={16}
-                decoding="async"
-                className="h-4 w-4 shrink-0 rounded-[3px] ring-1 ring-sky-900/15"
-              />
-              <span>Long-term table</span>
-              <ExternalTabIcon className="h-3 w-3 shrink-0 text-sky-700 opacity-90" />
-            </a>
-          </div>
-        </div>
-      )}
+      {terrainClick && terrainPopoverPos ? (
+        <TerrainClickPanel
+          terrain={terrainClick}
+          onClose={() => setTerrainClick(null)}
+          style={{
+            left: terrainPopoverPos.left,
+            top: terrainPopoverPos.top,
+          }}
+        />
+      ) : null}
 
       <MapGL
         ref={mapRef}
@@ -2186,17 +2028,15 @@ export function MapHub() {
         }}
         mapStyle={mapStyle}
         style={{
+          position: "relative",
+          zIndex: 0,
           width: "100%",
           height: "100%",
           cursor: mapMode === "draw" || mapMode === "pickWind" ? "crosshair" : undefined,
         }}
         maxZoom={19}
         minZoom={1}
-        interactiveLayerIds={
-          mapMode === "browse"
-            ? ["yr-forecast-point", "yr-forecast-point-halo", "areas-fill"]
-            : []
-        }
+        interactiveLayerIds={browseInteractiveLayerIds}
         onLoad={(e) => {
           const map = e.target;
           setMapEpoch((n) => n + 1);
@@ -2311,6 +2151,12 @@ export function MapHub() {
             return;
           }
           const { lng, lat } = e.lngLat;
+          const pt = e.point;
+          if (typeof window !== "undefined") {
+            setTerrainPopoverPos(
+              terrainPopoverScreenPosition(pt.x, pt.y, window.innerWidth, window.innerHeight),
+            );
+          }
           setTerrainClick({ lat, lng, elevationM: null, loading: true });
           void fetch(`/api/elevation?lat=${lat}&lng=${lng}`)
             .then(async (r) => {
@@ -2369,6 +2215,7 @@ export function MapHub() {
                 "icon-pitch-alignment": "map",
                 "icon-allow-overlap": true,
                 "icon-ignore-placement": true,
+                visibility: mapLayerToggles.windArrows ? "visible" : "none",
               }}
               paint={{
                 "icon-opacity": 0.52,
@@ -2381,6 +2228,9 @@ export function MapHub() {
             <Layer
               id="area-forecast-samples-circle"
               type="circle"
+              layout={{
+                visibility: mapLayerToggles.forecastSampleDots ? "visible" : "none",
+              }}
               paint={{
                 "circle-radius": 5,
                 "circle-color": "#d97706",
@@ -2394,6 +2244,7 @@ export function MapHub() {
               type="symbol"
               minzoom={10.5}
               layout={{
+                visibility: mapLayerToggles.forecastSampleDots ? "visible" : "none",
                 "text-field": ["get", "mapLabel"],
                 "text-size": [
                   "interpolate",
@@ -2580,9 +2431,18 @@ export function MapHub() {
                 "fill-color": ["get", "rankColor"],
                 "fill-opacity": [
                   "case",
-                  ["==", ["get", "isCommunity"], 1],
-                  0.22,
-                  0.35,
+                  ["==", ["get", "hasMapSelection"], 0],
+                  ["case", ["==", ["get", "isCommunity"], 1], 0.22, 0.35],
+                  [
+                    "case",
+                    ["==", ["get", "selectedPractice"], 1],
+                    ["case", ["==", ["get", "isCommunity"], 1], 0.22, 0.35],
+                    [
+                      "*",
+                      ["case", ["==", ["get", "isCommunity"], 1], 0.22, 0.35],
+                      0.72,
+                    ],
+                  ],
                 ],
               }}
             />
@@ -2614,6 +2474,7 @@ export function MapHub() {
               id="area-name-labels"
               type="symbol"
               layout={{
+                visibility: mapLayerToggles.areaLabels ? "visible" : "none",
                 "text-field": ["get", "areaName"],
                 "text-size": 12,
                 "text-offset": [0, 0.6],
@@ -2637,6 +2498,7 @@ export function MapHub() {
               id="wind-label-text"
               type="symbol"
               layout={{
+                visibility: mapLayerToggles.windArrows ? "visible" : "none",
                 "text-field": ["get", "windText"],
                 "text-size": [
                   "interpolate",
@@ -2667,6 +2529,9 @@ export function MapHub() {
             <Layer
               id="yr-forecast-point-halo"
               type="circle"
+              layout={{
+                visibility: mapLayerToggles.forecastSampleDots ? "visible" : "none",
+              }}
               paint={{
                 "circle-radius": [
                   "interpolate",
@@ -2688,6 +2553,9 @@ export function MapHub() {
             <Layer
               id="yr-forecast-point"
               type="circle"
+              layout={{
+                visibility: mapLayerToggles.forecastSampleDots ? "visible" : "none",
+              }}
               paint={{
                 "circle-radius": [
                   "interpolate",
@@ -2713,6 +2581,11 @@ export function MapHub() {
           </Source>
         ) : null}
       </MapGL>
+
+      <MapHubLegend
+        onBeforeOpenHelp={() => setSidebarTab("plan")}
+        avoidEditPanelOverlap={Boolean(selectedPracticeAreaId && bundle)}
+      />
 
       {selectedPracticeAreaId && bundle ? (
         <PracticeAreaEditPanel

@@ -2,6 +2,7 @@ import bbox from "@turf/bbox";
 import booleanPointInPolygon from "@turf/boolean-point-in-polygon";
 import { point as turfPoint } from "@turf/helpers";
 import type { Feature, Polygon } from "geojson";
+import type { RankedPracticeAreaWind } from "@/lib/heuristics/rankAreaTypes";
 
 export function rankColor(score: number) {
   if (score >= 70) return "#22c55e";
@@ -87,6 +88,25 @@ export function windCompactSummary(w: {
   const windPart =
     sp != null ? (gu != null ? `${sp} (${gu}) m/s` : `${sp} m/s`) : "— m/s";
   return deg != null ? `${windPart} ${fromC} (${deg}°)` : `${windPart} ${fromC}`;
+}
+
+/** Second line when multi-spot forecast was used inside the polygon. */
+export function windMultiPointSubtitle(w: RankedPracticeAreaWind | null): string | null {
+  const mp = w?.multiPoint;
+  if (!mp || mp.samples < 2) return null;
+  const bits: string[] = [];
+  if (
+    mp.speedMinMs != null &&
+    mp.speedMaxMs != null &&
+    Math.round(mp.speedMinMs) !== Math.round(mp.speedMaxMs)
+  ) {
+    bits.push(`${Math.round(mp.speedMinMs)}–${Math.round(mp.speedMaxMs)} m/s in area`);
+  }
+  bits.push(`${mp.samples} spots`);
+  if (mp.dirSpreadDeg != null && mp.dirSpreadDeg >= 12) {
+    bits.push(`dir ±${Math.round(mp.dirSpreadDeg)}°`);
+  }
+  return bits.join(" · ");
 }
 
 /** Great-circle distance in km (for wind-arrow preview length). */
@@ -282,4 +302,25 @@ export function stratifyLngLatByElevationRank(
     out.push([sorted[idx]!.lng, sorted[idx]!.lat]);
   }
   return out;
+}
+
+/**
+ * Places the terrain popover near the map click (pixel coords from MapLibre) and clamps it
+ * so the card stays inside the viewport.
+ */
+export function terrainPopoverScreenPosition(
+  anchorX: number,
+  anchorY: number,
+  vw: number,
+  vh: number,
+): { left: number; top: number } {
+  const gap = 8;
+  const cardW = 320;
+  const cardH = 280;
+  const maxLeft = Math.max(gap, vw - cardW - gap);
+  const maxTop = Math.max(gap, vh - cardH - gap);
+  return {
+    left: Math.min(Math.max(gap, anchorX + gap), maxLeft),
+    top: Math.min(Math.max(gap, anchorY + gap), maxTop),
+  };
 }

@@ -3,6 +3,13 @@ import { signOut } from "next-auth/react";
 import type { Dispatch, SetStateAction } from "react";
 import { areaFeatureId, cardinalFromDeg, toDatetimeLocalInput } from "@/lib/map/mapHubHelpers";
 import { CollapsibleSection } from "./CollapsibleSection";
+import {
+  hubBtnPrimary,
+  hubBtnSecondaryToolbar,
+  hubInputNative,
+  hubKbd,
+  hubListRow,
+} from "./hubUi";
 import type { Bundle, ExperienceRow } from "./types";
 
 export function MapHubYouTab({
@@ -73,46 +80,42 @@ export function MapHubYouTab({
         onToggle={() => toggleToolSection("draw")}
       >
         {sessionPending ? (
-          <p className="text-[11px] text-zinc-500">Checking session…</p>
+          <p className="text-[11px] text-app-fg-subtle">Checking session…</p>
         ) : !isAuthed ? (
-          <p className="text-[11px] leading-snug text-zinc-600">
+          <p className="text-[11px] leading-snug text-app-fg-muted">
             Anyone can browse <strong>public</strong> areas.{" "}
-            <Link href="/login" className="font-medium text-teal-700 underline hover:text-teal-900">
+            <Link href="/login" className="font-medium text-app-accent-hover underline hover:text-app-fg">
               Sign in
             </Link>{" "}
             to add your own spots.
           </p>
         ) : (
           <>
-            <p className="text-[11px] leading-snug text-zinc-600">
+            <p className="text-[11px] leading-snug text-app-fg-muted">
               Uses forecast at polygon centre and each area’s wind settings (set under{" "}
               <strong>Edit area</strong>).
             </p>
             <label className="flex flex-col gap-1">
-              <span className="text-[11px] font-medium text-zinc-700">Name for new drawings</span>
+              <span className="text-[11px] font-medium text-app-fg-muted">Name for new drawings</span>
               <input
                 type="text"
                 value={drawAreaName}
                 onChange={(e) => setDrawAreaName(e.target.value.slice(0, 120))}
                 placeholder="e.g. West beach"
-                className="rounded-xl border border-teal-900/10 bg-white px-3 py-2 text-xs text-zinc-900 focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-600/20"
+                className="rounded-xl border border-app-border-subtle bg-app-surface px-3 py-2 text-xs text-app-fg focus:border-app-accent focus:outline-none focus:ring-2 focus:ring-app-accent/20"
                 maxLength={120}
               />
             </label>
             <div className="flex flex-wrap gap-1.5">
               {mapMode === "browse" ? (
-                <button
-                  type="button"
-                  className="rounded-xl bg-teal-700 px-3 py-2 text-xs font-semibold text-white shadow-sm shadow-teal-900/15 hover:bg-teal-800"
-                  onClick={onStartDrawing}
-                >
+                <button type="button" className={hubBtnPrimary} onClick={onStartDrawing}>
                   Start drawing
                 </button>
               ) : (
                 <>
                   <button
                     type="button"
-                    className="rounded-xl bg-zinc-800 px-3 py-2 text-xs font-medium text-white hover:bg-zinc-900"
+                    className={hubBtnPrimary}
                     disabled={loading}
                     onClick={() => void finishDrawing()}
                   >
@@ -120,7 +123,7 @@ export function MapHubYouTab({
                   </button>
                   <button
                     type="button"
-                    className="rounded-xl border border-zinc-300 bg-white px-2 py-2 text-xs hover:bg-zinc-50"
+                    className={hubBtnSecondaryToolbar}
                     onClick={() => setDrawRing((r) => r.slice(0, -1))}
                     disabled={drawRing.length === 0}
                   >
@@ -128,7 +131,7 @@ export function MapHubYouTab({
                   </button>
                   <button
                     type="button"
-                    className="rounded-xl border border-zinc-300 bg-white px-2 py-2 text-xs hover:bg-zinc-50"
+                    className={hubBtnSecondaryToolbar}
                     onClick={() => {
                       setDrawRing([]);
                       setMapMode("browse");
@@ -141,12 +144,12 @@ export function MapHubYouTab({
               )}
             </div>
             {mapMode === "draw" && (
-              <p className="text-[11px] text-zinc-600">
+              <p className="text-[11px] text-app-fg-muted">
                 {editingAreaId ? (
-                  <span className="font-medium text-amber-800">Editing boundary · </span>
+                  <span className="font-medium text-app-warning-fg">Editing boundary · </span>
                 ) : null}
                 {drawRing.length} point{drawRing.length === 1 ? "" : "s"} · click map for corners ·{" "}
-                <kbd className="rounded-md bg-zinc-200/90 px-1 py-0.5 text-[10px]">Esc</kbd> cancels
+                <kbd className={hubKbd}>Esc</kbd> cancels
               </p>
             )}
           </>
@@ -167,24 +170,24 @@ export function MapHubYouTab({
         variant="accent"
       >
         {sessionPending ? (
-          <p className="text-[11px] text-zinc-500">Checking session…</p>
+          <p className="text-[11px] text-app-fg-subtle">Checking session…</p>
         ) : !isAuthed ? (
-          <p className="text-[11px] leading-snug text-zinc-700">
-            <Link href="/login" className="font-medium text-teal-800 underline hover:text-teal-950">
+          <p className="text-[11px] leading-snug text-app-fg-muted">
+            <Link href="/login" className="font-medium text-app-accent-hover underline hover:text-app-fg">
               Sign in
             </Link>{" "}
             to log sessions and get personalized ranking boosts on your areas.
           </p>
         ) : (
           <>
-            <p className="text-[10px] leading-snug text-zinc-700">
+            <p className="text-[10px] leading-snug text-app-fg-muted">
               Add when and where you went (active sport:{" "}
               <strong>{activeSport === "kiteski" ? "Kite ski" : "Kite surf"}</strong>). We pull archive
               wind at the area centre; when forecast matches those buckets, areas with good sessions get a
               small score boost (needs at least two matching experiences per area).
             </p>
             <form
-              className="flex flex-col gap-2 border-t border-teal-200/80 pt-2"
+              className="flex flex-col gap-2 border-t border-app-border pt-2"
               onSubmit={(e) => {
                 e.preventDefault();
                 const fd = new FormData(e.currentTarget);
@@ -227,7 +230,7 @@ export function MapHubYouTab({
                 })();
               }}
             >
-              <label className="text-[11px] font-medium text-zinc-800">
+              <label className="text-[11px] font-medium text-app-fg">
                 When
                 <input
                   key={clientReady ? "occurredAt" : "occurredAt-pending"}
@@ -235,15 +238,15 @@ export function MapHubYouTab({
                   name="occurredAt"
                   required
                   defaultValue={clientReady ? toDatetimeLocalInput(new Date()) : ""}
-                  className="mt-0.5 w-full rounded border px-2 py-1 text-xs"
+                  className={hubInputNative}
                 />
               </label>
-              <label className="text-[11px] font-medium text-zinc-800">
+              <label className="text-[11px] font-medium text-app-fg">
                 Area
                 <select
                   name="practiceAreaId"
                   required
-                  className="mt-0.5 w-full rounded border px-2 py-1 text-xs"
+                  className={hubInputNative}
                   disabled={!bundle?.practiceAreas?.features.length}
                 >
                   <option value="">Select area…</option>
@@ -259,11 +262,11 @@ export function MapHubYouTab({
                   })}
                 </select>
               </label>
-              <label className="text-[11px] font-medium text-zinc-800">
+              <label className="text-[11px] font-medium text-app-fg">
                 How were conditions?
                 <select
                   name="sessionSuitability"
-                  className="mt-0.5 w-full rounded border px-2 py-1 text-xs"
+                  className={hubInputNative}
                   defaultValue="suitable"
                 >
                   <option value="ideal">Ideal</option>
@@ -275,17 +278,17 @@ export function MapHubYouTab({
               <button
                 type="submit"
                 disabled={loading || !bundle?.practiceAreas?.features.length}
-                className="rounded bg-teal-700 px-2 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                className={hubBtnPrimary}
               >
                 Save experience
               </button>
             </form>
             {experiences.length > 0 ? (
-              <ul className="max-h-40 space-y-1 overflow-y-auto border-t border-teal-200/80 pt-2 text-[10px] text-zinc-700">
+              <ul className="max-h-40 space-y-1 overflow-y-auto border-t border-app-border pt-2 text-[10px] text-app-fg-muted">
                 {experiences.map((ex) => (
                   <li
                     key={ex.id}
-                    className="flex items-start justify-between gap-1 rounded border border-zinc-200/80 bg-white/80 px-1.5 py-1"
+                    className={hubListRow}
                   >
                     <span className="min-w-0 flex-1 leading-snug">
                       <span className="font-medium">{ex.practiceAreaName}</span>
@@ -309,7 +312,7 @@ export function MapHubYouTab({
                     </span>
                     <button
                       type="button"
-                      className="shrink-0 text-[10px] text-red-600 hover:underline"
+                      className="shrink-0 text-[10px] text-app-danger hover:underline"
                       onClick={() => {
                         setLoading(true);
                         void (async () => {
@@ -333,7 +336,7 @@ export function MapHubYouTab({
                 ))}
               </ul>
             ) : (
-              <p className="text-[10px] text-zinc-500">No experiences for this sport yet.</p>
+              <p className="text-[10px] text-app-fg-subtle">No experiences for this sport yet.</p>
             )}
           </>
         )}
@@ -354,23 +357,23 @@ export function MapHubYouTab({
         onToggle={() => toggleToolSection("account")}
       >
         {sessionPending ? (
-          <p className="text-xs text-zinc-500">Checking session…</p>
+          <p className="text-xs text-app-fg-subtle">Checking session…</p>
         ) : isAuthed ? (
           <>
-            {msg && <p className="text-xs text-zinc-600">{msg}</p>}
+            {msg && <p className="text-xs text-app-fg-muted">{msg}</p>}
             <button
               type="button"
-              className="text-left text-xs font-medium text-teal-700 underline decoration-teal-700/50 underline-offset-2 hover:text-teal-900"
+              className="text-left text-xs font-medium text-app-accent-hover underline decoration-app-accent/50 underline-offset-2 hover:text-app-fg"
               onClick={() => void signOut({ callbackUrl: "/login" })}
             >
               Sign out
             </button>
           </>
         ) : (
-          <p className="text-xs leading-snug text-zinc-600">
+          <p className="text-xs leading-snug text-app-fg-muted">
             <Link
               href="/login"
-              className="font-medium text-teal-700 underline decoration-teal-700/50 underline-offset-2 hover:text-teal-900"
+              className="font-medium text-app-accent-hover underline decoration-app-accent/50 underline-offset-2 hover:text-app-fg"
             >
               Sign in
             </Link>{" "}

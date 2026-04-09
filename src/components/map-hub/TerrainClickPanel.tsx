@@ -1,33 +1,41 @@
 /* Small static favicons in links — match prior MapHub markup. */
 /* eslint-disable @next/next/no-img-element */
+import type { CSSProperties } from "react";
 import { yrNoDailyTableUrlEn, yrNoHourlyTableUrlEn } from "@/lib/yrNoUrls";
+import { hubOverlayZ } from "@/components/map-hub/mapHubOverlayZ";
 import type { ClickTerrain } from "./types";
 import { ExternalTabIcon } from "./ExternalTabIcon";
 
 export function TerrainClickPanel({
   terrain,
   onClose,
+  style,
 }: {
   terrain: ClickTerrain;
   onClose: () => void;
+  /** When set (e.g. from map click), panel is anchored in the map stack instead of bottom-left. */
+  style?: CSSProperties;
 }) {
   return (
-    <div className="absolute bottom-2 left-2 z-10 max-w-xs rounded-2xl border border-teal-900/10 bg-white/95 p-3 text-xs shadow-lg shadow-teal-900/10 backdrop-blur-sm">
+    <div
+      className={`absolute max-w-xs rounded-2xl border border-app-border-subtle bg-app-surface/95 p-3 text-xs shadow-[var(--app-shadow-hub)] backdrop-blur-sm ${hubOverlayZ.mapPopover}`}
+      style={style}
+    >
       <div className="flex justify-between gap-2">
-        <span className="font-medium">Terrain</span>
-        <button type="button" className="text-zinc-500" onClick={onClose} aria-label="Close">
+        <span className="font-medium text-app-fg">Terrain</span>
+        <button type="button" className="text-app-fg-subtle" onClick={onClose} aria-label="Close">
           ✕
         </button>
       </div>
-      <p className="mt-1 font-mono text-[11px] text-zinc-600">
+      <p className="mt-1 font-mono text-[11px] text-app-fg-muted">
         {terrain.lat.toFixed(5)}, {terrain.lng.toFixed(5)}
       </p>
       {terrain.loading ? (
-        <p className="text-zinc-500">Elevation…</p>
+        <p className="text-app-fg-subtle">Elevation…</p>
       ) : terrain.error ? (
-        <p className="text-red-600">{terrain.error}</p>
+        <p className="text-app-danger">{terrain.error}</p>
       ) : (
-        <p className="text-zinc-800">
+        <p className="text-app-fg">
           <strong>{terrain.elevationM != null ? `${Math.round(terrain.elevationM)} m` : "—"}</strong>{" "}
           AMSL
         </p>

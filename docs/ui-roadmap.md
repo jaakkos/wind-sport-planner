@@ -147,8 +147,8 @@ Priority order:
 
 ### Phase F — Optional follow-ups
 
-- [ ] Layer toggles for map overlays.
-- [ ] Dedicated `/help` or tooltips for scoring math.
+- [x] Layer toggles for map overlays.
+- [x] Dedicated `/help` or tooltips for scoring math.
 - [ ] Storybook or visual regression (Chromatic) if team grows.
 
 ---
@@ -179,4 +179,4 @@ Priority order:
 
 ---
 
-*Last updated: roadmap creation for execution tracking. Adjust dates and owners as the team picks up phases.*
+*Last updated: April 2026 — Phase F overlays + `/help` shipped; Storybook deferred.*
