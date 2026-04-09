@@ -20,9 +20,27 @@ export const openMeteoProvider: WeatherProvider = {
     url.searchParams.set("hourly", "wind_speed_10m,wind_direction_10m,wind_gusts_10m,temperature_2m");
     url.searchParams.set("timezone", "UTC");
 
-    const res = await fetch(url.toString());
+    let res: Response;
+    try {
+      res = await fetch(url.toString());
+    } catch {
+      return null;
+    }
     if (!res.ok) return null;
-    const j = await res.json();
+    let j: {
+      hourly?: {
+        time?: string[];
+        wind_speed_10m?: number[];
+        wind_direction_10m?: number[];
+        wind_gusts_10m?: number[];
+        temperature_2m?: number[];
+      };
+    };
+    try {
+      j = (await res.json()) as typeof j;
+    } catch {
+      return null;
+    }
     const times: string[] = j.hourly?.time ?? [];
     const ws: number[] = j.hourly?.wind_speed_10m ?? [];
     const wd: number[] = j.hourly?.wind_direction_10m ?? [];
@@ -70,9 +88,28 @@ export const openMeteoProvider: WeatherProvider = {
     url.searchParams.set("forecast_days", String(days));
     url.searchParams.set("timezone", "UTC");
 
-    const res = await fetch(url.toString());
+    let res: Response;
+    try {
+      res = await fetch(url.toString());
+    } catch {
+      return null;
+    }
     if (!res.ok) return null;
-    const j = await res.json();
+    let j: {
+      hourly?: {
+        time?: string[];
+        wind_speed_10m?: number[];
+        wind_direction_10m?: number[];
+        wind_gusts_10m?: number[];
+        temperature_2m?: number[];
+        visibility?: number[];
+      };
+    };
+    try {
+      j = (await res.json()) as typeof j;
+    } catch {
+      return null;
+    }
     const times: string[] = j.hourly?.time ?? [];
     const ws: number[] = j.hourly?.wind_speed_10m ?? [];
     const wd: number[] = j.hourly?.wind_direction_10m ?? [];

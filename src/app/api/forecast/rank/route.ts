@@ -51,19 +51,25 @@ export async function GET(req: Request) {
     rankingPreferencesJson = u?.rankingPreferences ?? undefined;
   }
 
-  const ranked = await rankPracticeAreas({
-    userId: uid,
-    sport,
-    at,
-    areas,
-    optimalMatchHalfWidthDeg,
-    rankingPreferencesJson,
-  });
+  try {
+    const ranked = await rankPracticeAreas({
+      userId: uid,
+      sport,
+      at,
+      areas,
+      optimalMatchHalfWidthDeg,
+      rankingPreferencesJson,
+    });
 
-  return NextResponse.json({
-    at: at.toISOString(),
-    sport,
-    optimalWindHalfWidthDeg: optimalMatchHalfWidthDeg,
-    ranked,
-  });
+    return NextResponse.json({
+      at: at.toISOString(),
+      sport,
+      optimalWindHalfWidthDeg: optimalMatchHalfWidthDeg,
+      ranked,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Ranking failed";
+    console.error("[forecast/rank]", err);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }

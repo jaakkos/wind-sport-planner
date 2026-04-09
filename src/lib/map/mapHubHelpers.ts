@@ -143,11 +143,20 @@ export function kmToScreenPx(km: number, latDeg: number, zoom: number): number {
 export const WIND_FIELD_MAX_ARROWS = 72;
 export const MAX_TOTAL_WIND_FIELD_MARKERS = 560;
 
-export function sampleWindFieldOrigins(
+/** Grid resolution for {@link sampleWindFieldGridCandidates} / {@link sampleWindFieldOrigins}. */
+export function windFieldGridNForDensityHint(densityHint: number): number {
+  return Math.min(32, Math.max(10, Math.ceil(Math.sqrt(densityHint * 3.2))));
+}
+
+/**
+ * All in-polygon nodes of a regular grid over the polygon bbox (no subsampling).
+ * Falls back to centroid when the grid misses the polygon.
+ */
+export function sampleWindFieldGridCandidates(
   poly: GeoJSON.Polygon,
   centroidLng: number,
   centroidLat: number,
-  maxPoints: number,
+  densityHint: number,
 ): [number, number][] {
   const [minLng, minLat, maxLng, maxLat] = bbox({
     type: "Feature",
@@ -156,7 +165,7 @@ export function sampleWindFieldOrigins(
   } as Feature<Polygon>);
   const w = Math.max(maxLng - minLng, 1e-6);
   const h = Math.max(maxLat - minLat, 1e-6);
-  const gridN = Math.min(32, Math.max(10, Math.ceil(Math.sqrt(maxPoints * 3.2))));
+  const gridN = windFieldGridNForDensityHint(densityHint);
   const stepLng = w / gridN;
   const stepLat = h / gridN;
   const candidates: [number, number][] = [];
@@ -170,12 +179,107 @@ export function sampleWindFieldOrigins(
     }
   }
   if (candidates.length === 0) return [[centroidLng, centroidLat]];
+  return candidates;
+}
+
+/**
+ * Evenly subsample grid candidates (legacy map arrows / small pools).
+ * Prefer {@link resolveWindForecastSamplePoints} for server-side forecast samples when using multiple points.
+ */
+export function sampleWindFieldOrigins(
+  poly: GeoJSON.Polygon,
+  centroidLng: number,
+  centroidLat: number,
+  maxPoints: number,
+): [number, number][] {
+  const candidates = sampleWindFieldGridCandidates(
+    poly,
+    centroidLng,
+    centroidLat,
+    maxPoints,
+  );
   if (candidates.length <= maxPoints) return candidates;
   const out: [number, number][] = [];
   const denom = Math.max(1, maxPoints - 1);
   for (let k = 0; k < maxPoints; k++) {
     const idx = Math.round((k / denom) * (candidates.length - 1));
     out.push(candidates[idx]!);
+  }
+  return out;
+}
+
+/**
+ * Farthest-point sampling in geographic space: spread picks across the polygon before
+ * elevation stratification.
+ */
+export function selectSpatiallyDispersedLngLat(
+  candidates: [number, number][],
+  count: number,
+  seedLng: number,
+  seedLat: number,
+): [number, number][] {
+  if (candidates.length <= count) return [...candidates];
+  let bestI = 0;
+  let bestD = Infinity;
+  for (let i = 0; i < candidates.length; i++) {
+    const [lng, lat] = candidates[i]!;
+    const d = haversineKm(seedLng, seedLat, lng, lat);
+    if (d < bestD) {
+      bestD = d;
+      bestI = i;
+    }
+  }
+  const selected: [number, number][] = [candidates[bestI]!];
+  const used = new Set<number>([bestI]);
+
+  while (selected.length < count) {
+    let pick = -1;
+    let bestScore = -1;
+    for (let j = 0; j < candidates.length; j++) {
+      if (used.has(j)) continue;
+      const [lng, lat] = candidates[j]!;
+      let minD = Infinity;
+      for (const [slng, slat] of selected) {
+        minD = Math.min(minD, haversineKm(slng, slat, lng, lat));
+      }
+      if (
+        minD > bestScore ||
+        (minD === bestScore && (pick < 0 || j < pick))
+      ) {
+        bestScore = minD;
+        pick = j;
+      }
+    }
+    if (pick < 0) break;
+    used.add(pick);
+    selected.push(candidates[pick]!);
+  }
+  return selected;
+}
+
+/** Pick k locations with roughly uniform spacing along the elevation rank (high → low). */
+export function stratifyLngLatByElevationRank(
+  pts: ReadonlyArray<{ lng: number; lat: number; elevM: number | null }>,
+  k: number,
+): [number, number][] {
+  if (pts.length === 0) return [];
+  const sorted = [...pts].sort((a, b) => {
+    const fa = a.elevM != null && Number.isFinite(a.elevM);
+    const fb = b.elevM != null && Number.isFinite(b.elevM);
+    if (fa && fb) {
+      const d = b.elevM! - a.elevM!;
+      if (d !== 0) return d;
+    } else if (fa && !fb) return -1;
+    else if (!fa && fb) return 1;
+    if (a.lng !== b.lng) return a.lng - b.lng;
+    return a.lat - b.lat;
+  });
+  if (k >= sorted.length) return sorted.map((p) => [p.lng, p.lat]);
+  const out: [number, number][] = [];
+  const denom = Math.max(1, k - 1);
+  for (let i = 0; i < k; i++) {
+    const idx = Math.round((i / denom) * (sorted.length - 1));
+    out.push([sorted[idx]!.lng, sorted[idx]!.lat]);
   }
   return out;
 }

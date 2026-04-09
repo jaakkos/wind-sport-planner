@@ -10,9 +10,14 @@ export async function fetchElevationOpenMeteoM(
   const url = new URL("https://api.open-meteo.com/v1/elevation");
   url.searchParams.set("latitude", String(lat));
   url.searchParams.set("longitude", String(lng));
-  const res = await fetch(url.toString(), fetchInit);
-  if (!res.ok) return null;
-  const data = (await res.json()) as { elevation?: number[] };
-  const e = data.elevation?.[0];
-  return typeof e === "number" && Number.isFinite(e) ? e : null;
+  try {
+    const res = await fetch(url.toString(), fetchInit);
+    if (!res.ok) return null;
+    const data = (await res.json()) as { elevation?: number[] };
+    const e = data.elevation?.[0];
+    return typeof e === "number" && Number.isFinite(e) ? e : null;
+  } catch {
+    /* DNS / TLS / offline — treat as unknown elevation */
+    return null;
+  }
 }

@@ -29,14 +29,15 @@ type MetNoCompleteDoc = {
   };
 };
 
-/** Met.no is strongest in the Nordics; elsewhere Open-Meteo is used first (e.g. visibility field). */
+/** Met.no coverage (Nordics / nearby); router tries Met.no before Open-Meteo when this matches. */
 export function metNoPreferredRegion(lat: number, lng: number): boolean {
   return lat >= 43 && lat <= 83 && lng >= -25 && lng <= 35;
 }
 
 export const metNoProvider: WeatherProvider = {
   id: "met_no",
-  priority: 40,
+  /** Lowest = tried first among forecast providers (before FMI stub and Open-Meteo). */
+  priority: 20,
   supports(lat, lng) {
     return metNoPreferredRegion(lat, lng);
   },
@@ -58,9 +59,14 @@ export const metNoProvider: WeatherProvider = {
       url.searchParams.set("altitude", String(Math.round(Math.min(8000, Math.max(-500, alt)))));
     }
 
-    const res = await fetch(url.toString(), {
-      headers: { "User-Agent": metNoUserAgent() },
-    });
+    let res: Response;
+    try {
+      res = await fetch(url.toString(), {
+        headers: { "User-Agent": metNoUserAgent() },
+      });
+    } catch {
+      return null;
+    }
     if (!res.ok) return null;
 
     let j: MetNoCompleteDoc;

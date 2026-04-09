@@ -1,21 +1,17 @@
 import centroid from "@turf/centroid";
 import type { Feature, Polygon } from "geojson";
 import type { PracticeArea, Sport } from "@/generated/prisma/client";
-import { sampleWindFieldOrigins } from "@/lib/map/mapHubHelpers";
 import { fetchElevationOpenMeteoM } from "@/lib/weather/elevationOpenMeteo";
 import { metNoPreferredRegion } from "@/lib/weather/providers/metNo";
 import { fetchForecastWithRouter } from "@/lib/weather/router";
 import type { NormalizedWind } from "@/lib/weather/types";
-import {
-  elevationRangeInsidePolygonM,
-  effectiveSamplePointCount,
-  pickHourClosestTo,
-  polygonBboxDiagonalKm,
-} from "@/lib/heuristics/multiPointForecast";
+import { pickHourClosestTo, polygonBboxDiagonalKm } from "@/lib/heuristics/multiPointForecast";
+import { resolvePracticeAreaWindSampleLocations } from "@/lib/heuristics/practiceAreaWindLocations";
 import {
   parseRankingPreferencesDoc,
   resolveMultiPointForecastPrefs,
 } from "@/lib/heuristics/rankingPreferences";
+import { createElevationCache } from "@/lib/heuristics/windSamplePoints";
 
 function asPolygon(geojson: unknown): Polygon | null {
   if (!geojson || typeof geojson !== "object") return null;
@@ -100,53 +96,29 @@ export async function getPracticeAreaForecastSamples(args: {
   const { from: windowFrom, to: windowTo } = forecastFetchWindow(args.at);
   const targetMs = args.at.getTime();
 
+  const forecastCache = new Map<string, ForecastSeriesResult>();
+  const elevationForPoint = createElevationCache((lat, lng) =>
+    fetchElevationOpenMeteoM(lat, lng),
+  );
+
   const c = areaCentroid(args.area.geojson);
   if (!c) return null;
 
   const poly = asPolygon(args.area.geojson);
   let bboxDiagKm = 0;
-  let elevRangeM = 0;
   if (poly) {
     bboxDiagKm = polygonBboxDiagonalKm(poly);
-    if (mpPrefs.mode !== "off") {
-      elevRangeM = await elevationRangeInsidePolygonM(
-        poly,
-        c.lng,
-        c.lat,
-        async (lat, lng) => {
-          const m = await fetchElevationOpenMeteoM(lat, lng);
-          return m;
-        },
-        12,
-      );
-    }
   }
 
-  const candidatePts = poly
-    ? sampleWindFieldOrigins(poly, c.lng, c.lat, mpPrefs.maxSamples)
-    : [[c.lng, c.lat] as [number, number]];
-
-  const k = effectiveSamplePointCount({
+  const { elevRangeM, points } = await resolvePracticeAreaWindSampleLocations({
+    poly,
+    centroidLng: c.lng,
+    centroidLat: c.lat,
     mode: mpPrefs.mode,
     maxSamples: mpPrefs.maxSamples,
     bboxDiagonalKm: bboxDiagKm,
-    elevRangeM,
-    availablePoints: candidatePts.length,
+    elevationFor: elevationForPoint,
   });
-
-  const points: [number, number][] =
-    k <= 1 ? [[c.lng, c.lat]] : candidatePts.slice(0, k);
-
-  const elevationCache = new Map<string, number | null>();
-  const forecastCache = new Map<string, ForecastSeriesResult>();
-
-  async function elevationForPoint(lat: number, lng: number): Promise<number | null> {
-    const key = `${lat.toFixed(4)},${lng.toFixed(4)}`;
-    if (elevationCache.has(key)) return elevationCache.get(key) ?? null;
-    const m = await fetchElevationOpenMeteoM(lat, lng);
-    elevationCache.set(key, m);
-    return m;
-  }
 
   async function getForecastCached(
     lat: number,

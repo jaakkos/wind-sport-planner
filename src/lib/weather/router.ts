@@ -3,6 +3,10 @@ import { fmiProviderStub } from "@/lib/weather/providers/fmi";
 import { metNoProvider } from "@/lib/weather/providers/metNo";
 import { openMeteoProvider } from "@/lib/weather/providers/openMeteo";
 
+/**
+ * Ascending `priority` → try order. Intended: **Met.no (20) → FMI stub (35) → Open-Meteo (100)**.
+ * Outside Met.no’s region, only FMI (if Finland) + Open-Meteo apply.
+ */
 const providers: WeatherProvider[] = [
   fmiProviderStub,
   metNoProvider,
@@ -20,9 +24,13 @@ export async function fetchHistoricalWithRouter(
 ): Promise<{ providerId: string; data: import("@/lib/weather/types").NormalizedWind; raw: unknown } | null> {
   const chain = providersForPoint(lat, lng, at);
   for (const p of chain) {
-    const r = await p.fetchHistoricalSnapshot(lat, lng, at);
-    if (r) {
-      return { providerId: p.id, data: r.data, raw: r.raw };
+    try {
+      const r = await p.fetchHistoricalSnapshot(lat, lng, at);
+      if (r) {
+        return { providerId: p.id, data: r.data, raw: r.raw };
+      }
+    } catch {
+      /* provider bug or unexpected parse — try next */
     }
   }
   return null;
@@ -37,9 +45,13 @@ export async function fetchForecastWithRouter(
 ): Promise<{ providerId: string; hourly: import("@/lib/weather/types").NormalizedWind[]; raw: unknown } | null> {
   const chain = providersForPoint(lat, lng, from);
   for (const p of chain) {
-    const r = await p.fetchForecastSeries(lat, lng, from, to, options);
-    if (r?.hourly?.length) {
-      return { providerId: p.id, hourly: r.hourly, raw: r.raw };
+    try {
+      const r = await p.fetchForecastSeries(lat, lng, from, to, options);
+      if (r?.hourly?.length) {
+        return { providerId: p.id, hourly: r.hourly, raw: r.raw };
+      }
+    } catch {
+      /* network / parse — try next provider */
     }
   }
   return null;

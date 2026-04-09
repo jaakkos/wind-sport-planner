@@ -13,7 +13,8 @@ function inFinland(lat: number, lng: number) {
  */
 export const fmiProviderStub: WeatherProvider = {
   id: "fmi_wfs",
-  priority: 10,
+  /** After Met.no (20); still before Open-Meteo (100). Stub returns null until implemented. */
+  priority: 35,
   supports(lat, lng) {
     return inFinland(lat, lng);
   },

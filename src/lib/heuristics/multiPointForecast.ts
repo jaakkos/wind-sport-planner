@@ -1,6 +1,10 @@
 import bbox from "@turf/bbox";
 import type { Feature, Polygon } from "geojson";
-import { haversineKm, sampleWindFieldOrigins } from "@/lib/map/mapHubHelpers";
+import { haversineKm } from "@/lib/map/mapHubHelpers";
+import {
+  ELEVATION_RANGE_MAX_PROBES,
+  windFieldSpatialProbePoints,
+} from "@/lib/heuristics/windSamplePoints";
 import type { NormalizedWind } from "@/lib/weather/types";
 import { angularDiffDeg } from "@/lib/heuristics/windDirection";
 import type { MultiPointForecastMode, MultiPointScoringPolicy } from "@/lib/heuristics/rankingPreferences";
@@ -24,9 +28,16 @@ export async function elevationRangeInsidePolygonM(
   centroidLng: number,
   centroidLat: number,
   elevationFor: (lat: number, lng: number) => Promise<number | null>,
-  maxProbe = 12,
+  opts: { maxSamplesSetting: number; maxProbes?: number },
 ): Promise<number> {
-  const pts = sampleWindFieldOrigins(poly, centroidLng, centroidLat, maxProbe);
+  const maxProbes = opts.maxProbes ?? ELEVATION_RANGE_MAX_PROBES;
+  const pts = windFieldSpatialProbePoints(
+    poly,
+    centroidLng,
+    centroidLat,
+    opts.maxSamplesSetting,
+    maxProbes,
+  );
   const vals: number[] = [];
   for (const [lng, lat] of pts) {
     const m = await elevationFor(lat, lng);

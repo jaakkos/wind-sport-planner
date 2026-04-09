@@ -14,9 +14,7 @@ import MapGL, {
   Source,
 } from "react-map-gl/maplibre";
 import bbox from "@turf/bbox";
-import booleanPointInPolygon from "@turf/boolean-point-in-polygon";
 import centroid from "@turf/centroid";
-import { point as turfPoint } from "@turf/helpers";
 import type { Feature, FeatureCollection, Polygon } from "geojson";
 import { PracticeAreaEditPanel } from "@/components/map-hub/PracticeAreaEditPanel";
 import {
@@ -36,6 +34,14 @@ import {
   WIND_FIELD_ARROW_IMAGE_ID,
 } from "@/lib/map/windFieldArrowIcon";
 import { clampArrowLengthInsidePolygon } from "@/lib/map/windArrowLength";
+import {
+  MAX_TOTAL_WIND_FIELD_MARKERS,
+  WIND_FIELD_MAX_ARROWS,
+} from "@/lib/map/mapHubHelpers";
+import {
+  windFieldSpatialProbePoints,
+  WIND_MAP_ARROW_MAX_SAMPLES_SETTING,
+} from "@/lib/heuristics/windSamplePoints";
 /** Inline glyph: opens in new tab (paired with Yr favicon on external forecast links). */
 function ExternalTabIcon({ className }: { className?: string }) {
   return (
@@ -384,48 +390,6 @@ function CollapsibleSection({
   );
 }
 
-/** ~Max sample points per practice polygon (CSS markers; cap total for DOM cost). */
-const WIND_FIELD_MAX_ARROWS = 72;
-const MAX_TOTAL_WIND_FIELD_MARKERS = 560;
-
-function sampleWindFieldOrigins(
-  poly: GeoJSON.Polygon,
-  centroidLng: number,
-  centroidLat: number,
-  maxPoints: number,
-): [number, number][] {
-  const [minLng, minLat, maxLng, maxLat] = bbox({
-    type: "Feature",
-    geometry: poly,
-    properties: {},
-  } as Feature<Polygon>);
-  const w = Math.max(maxLng - minLng, 1e-6);
-  const h = Math.max(maxLat - minLat, 1e-6);
-  // Finer grid, then subsample so arrows spread across the polygon instead of filling from one corner.
-  const gridN = Math.min(32, Math.max(10, Math.ceil(Math.sqrt(maxPoints * 3.2))));
-  const stepLng = w / gridN;
-  const stepLat = h / gridN;
-  const candidates: [number, number][] = [];
-  for (let i = 0; i <= gridN; i++) {
-    const la = minLat + i * stepLat;
-    for (let j = 0; j <= gridN; j++) {
-      const lo = minLng + j * stepLng;
-      if (booleanPointInPolygon(turfPoint([lo, la]), poly)) {
-        candidates.push([lo, la]);
-      }
-    }
-  }
-  if (candidates.length === 0) return [[centroidLng, centroidLat]];
-  if (candidates.length <= maxPoints) return candidates;
-  const out: [number, number][] = [];
-  const denom = Math.max(1, maxPoints - 1);
-  for (let k = 0; k < maxPoints; k++) {
-    const idx = Math.round((k / denom) * (candidates.length - 1));
-    out.push(candidates[idx]!);
-  }
-  return out;
-}
-
 export function MapHub() {
   const { status } = useSession();
   const isAuthed = status === "authenticated";
@@ -442,6 +406,8 @@ export function MapHub() {
   }, [sessionPending, isAuthed]);
 
   const mapRef = useRef<MapRef>(null);
+  /** Avoid re-fitting the same practice-area set when rank/bundle updates. */
+  const lastPracticeAreaFitSigRef = useRef<string>("");
   /** Bumps on map `load` so effects can re-sync icons after the map instance exists. */
   const [mapEpoch, setMapEpoch] = useState(0);
   const [mapZoom, setMapZoom] = useState(5);
@@ -462,6 +428,8 @@ export function MapHub() {
   const [editingAreaId, setEditingAreaId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  /** Shown in Plan when ranking fails so users are not stuck with an empty list and no explanation. */
+  const [rankLoadError, setRankLoadError] = useState<string | null>(null);
   const [terrainClick, setTerrainClick] = useState<ClickTerrain | null>(null);
   const [mapMode, setMapMode] = useState<"browse" | "draw" | "pickWind">("browse");
   const [drawRing, setDrawRing] = useState<[number, number][]>([]);
@@ -628,18 +596,37 @@ export function MapHub() {
   );
 
   const loadRank = useCallback(async () => {
+    setRankLoadError(null);
     const q = new URLSearchParams({
       sport: activeSport,
       at: forecastAtIso,
     });
     q.set("optimalWindHalfWidthDeg", String(optimalWindHalfWidthDeg));
-    const r = await fetch(`/api/forecast/rank?${q.toString()}`);
-    if (!r.ok) {
-      setMsg(`Forecast ranking failed (${r.status}). Wind overlays may be missing.`);
-      return;
+    try {
+      const r = await fetch(`/api/forecast/rank?${q.toString()}`);
+      if (!r.ok) {
+        let detail = "";
+        try {
+          const t = await r.text();
+          detail = t ? ` ${t.slice(0, 240)}` : "";
+        } catch {
+          /* ignore */
+        }
+        const line = `Forecast ranking failed (HTTP ${r.status}).${detail}`;
+        setRankLoadError(line);
+        setMsg(`Forecast ranking failed (${r.status}). Wind overlays may be missing.`);
+        setRanked([]);
+        return;
+      }
+      const j = (await r.json()) as { ranked: RankedPracticeArea[] };
+      setRanked(j.ranked ?? []);
+      setRankLoadError(null);
+    } catch (e) {
+      const m = e instanceof Error ? e.message : String(e);
+      setRankLoadError(`Forecast ranking could not load: ${m}`);
+      setMsg(`Forecast ranking failed. ${m}`);
+      setRanked([]);
     }
-    const j = (await r.json()) as { ranked: RankedPracticeArea[] };
-    setRanked(j.ranked ?? []);
   }, [activeSport, forecastAtIso, optimalWindHalfWidthDeg]);
 
   const saveRankingPrefsForActiveSport = useCallback(async () => {
@@ -717,6 +704,51 @@ export function MapHub() {
     return () => clearTimeout(t);
   }, [loadRank]);
 
+  useEffect(() => {
+    const fc = bundle?.practiceAreas;
+    if (!fc?.features.length) return;
+    const ids = fc.features
+      .map((f) => areaFeatureId(f))
+      .filter((id) => id.length > 0)
+      .sort()
+      .join(",");
+    const sig = `${activeSport}:${ids}`;
+    if (lastPracticeAreaFitSigRef.current === sig) return;
+
+    const map = mapRef.current?.getMap();
+    if (!map) return;
+
+    const runFit = () => {
+      if (lastPracticeAreaFitSigRef.current === sig) return;
+      try {
+        const bounds = bbox(fc as FeatureCollection);
+        const [minLng, minLat, maxLng, maxLat] = bounds;
+        if (![minLng, minLat, maxLng, maxLat].every(Number.isFinite)) return;
+        const sidebarPad =
+          typeof window !== "undefined"
+            ? Math.min(380, Math.round(window.innerWidth * 0.36))
+            : 72;
+        map.fitBounds(
+          [
+            [minLng, minLat],
+            [maxLng, maxLat],
+          ],
+          {
+            padding: { top: 64, bottom: 64, left: sidebarPad, right: 48 },
+            maxZoom: 14,
+            duration: 500,
+          },
+        );
+        lastPracticeAreaFitSigRef.current = sig;
+      } catch {
+        /* invalid geometry for bbox */
+      }
+    };
+
+    if (map.isStyleLoaded()) runFit();
+    else map.once("load", runFit);
+  }, [bundle?.practiceAreas, activeSport, mapEpoch]);
+
   const areasColored = useMemo(() => {
     if (!bundle?.practiceAreas) return null;
     const rankMap = new Map(ranked.map((r) => [r.areaId, r.score]));
@@ -793,7 +825,13 @@ export function MapHub() {
       const windTo = windToDegFromDirFrom(w.dirFromDeg);
       const poly = polyById.get(r.areaId);
       const origins = poly
-        ? sampleWindFieldOrigins(poly, lng, lat, WIND_FIELD_MAX_ARROWS)
+        ? windFieldSpatialProbePoints(
+            poly,
+            lng,
+            lat,
+            WIND_MAP_ARROW_MAX_SAMPLES_SETTING,
+            WIND_FIELD_MAX_ARROWS,
+          )
         : [[lng, lat]];
       let i = 0;
       for (const [sx, sy] of origins) {
@@ -1314,11 +1352,23 @@ export function MapHub() {
               </ul>
             </div>
           ) : (
-            <p className="text-[10px] text-zinc-500">
-              {isAuthed
-                ? "No ranked areas yet — add a practice polygon or mark an area public."
-                : "No public areas for this sport yet — check the other sport or sign in to explore private spots you have saved."}
-            </p>
+            <div className="space-y-2">
+              {rankLoadError ? (
+                <p className="rounded-xl bg-amber-50/90 p-2.5 text-[10px] leading-snug text-amber-950 ring-1 ring-amber-200/80">
+                  {rankLoadError}
+                  <span className="mt-1.5 block text-zinc-600">
+                    Practice polygons may still appear on the map once the view fits your areas. Check the
+                    terminal or network tab for <code className="rounded bg-white/60 px-0.5">/api/forecast/rank</code>.
+                  </span>
+                </p>
+              ) : (
+                <p className="text-[10px] text-zinc-500">
+                  {isAuthed
+                    ? "No ranked areas yet — add a practice polygon or mark an area public."
+                    : "No public areas for this sport yet — check the other sport or sign in to explore private spots you have saved."}
+                </p>
+              )}
+            </div>
           )}
           {isAuthed ? (
             rankingPrefsLoading || !rankingForm || !multiPointForm ? (
