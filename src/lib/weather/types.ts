@@ -6,6 +6,12 @@ export type NormalizedWind = {
   /** Horizontal visibility (m) from model; low values ≈ fog, low cloud, haze. */
   visibilityM: number | null;
   observedAt: Date;
+  /**
+   * True when this data point originates from an observation-like product
+   * (e.g. Open-Meteo `current` block or Met.no's first analysis step)
+   * rather than a pure forecast hour.
+   */
+  isObservation?: boolean;
 };
 
 export type WeatherProviderId = string;

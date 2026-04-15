@@ -81,6 +81,10 @@ export const openMeteoProvider: WeatherProvider = {
       "hourly",
       "wind_speed_10m,wind_direction_10m,wind_gusts_10m,temperature_2m,visibility",
     );
+    url.searchParams.set(
+      "current",
+      "wind_speed_10m,wind_direction_10m,wind_gusts_10m,temperature_2m,visibility",
+    );
     const days = Math.min(
       16,
       Math.max(1, Math.ceil((to.getTime() - from.getTime()) / 86400000) + 1),
@@ -96,6 +100,14 @@ export const openMeteoProvider: WeatherProvider = {
     }
     if (!res.ok) return null;
     let j: {
+      current?: {
+        time?: string;
+        wind_speed_10m?: number;
+        wind_direction_10m?: number;
+        wind_gusts_10m?: number;
+        temperature_2m?: number;
+        visibility?: number;
+      };
       hourly?: {
         time?: string[];
         wind_speed_10m?: number[];
@@ -119,10 +131,31 @@ export const openMeteoProvider: WeatherProvider = {
     const hourly: import("@/lib/weather/types").NormalizedWind[] = [];
     const fromT = from.getTime();
     const toT = to.getTime();
+
+    const cur = j.current;
+    let currentInserted = false;
+    const curTime = cur?.time ? new Date(cur.time + "Z") : null;
+    const curMs = curTime?.getTime() ?? 0;
+
     for (let i = 0; i < times.length; i++) {
       const observedAt = new Date(times[i] + "Z");
       const t = observedAt.getTime();
       if (t < fromT || t > toT) continue;
+
+      if (!currentInserted && cur && curTime && curMs >= fromT && curMs <= toT && curMs <= t) {
+        const curVm = cur.visibility;
+        hourly.push({
+          observedAt: curTime,
+          windSpeedMs: cur.wind_speed_10m != null ? cur.wind_speed_10m / 3.6 : null,
+          windDirDeg: cur.wind_direction_10m ?? null,
+          gustMs: cur.wind_gusts_10m != null ? cur.wind_gusts_10m / 3.6 : null,
+          temperatureC: cur.temperature_2m ?? null,
+          visibilityM: curVm != null && Number.isFinite(curVm) && curVm >= 0 ? curVm : null,
+          isObservation: true,
+        });
+        currentInserted = true;
+      }
+
       const vm = vis[i];
       hourly.push({
         observedAt,
@@ -134,6 +167,20 @@ export const openMeteoProvider: WeatherProvider = {
           vm != null && Number.isFinite(vm) && vm >= 0 ? vm : null,
       });
     }
+
+    if (!currentInserted && cur && curTime && curMs >= fromT && curMs <= toT) {
+      const curVm = cur.visibility;
+      hourly.push({
+        observedAt: curTime,
+        windSpeedMs: cur.wind_speed_10m != null ? cur.wind_speed_10m / 3.6 : null,
+        windDirDeg: cur.wind_direction_10m ?? null,
+        gustMs: cur.wind_gusts_10m != null ? cur.wind_gusts_10m / 3.6 : null,
+        temperatureC: cur.temperature_2m ?? null,
+        visibilityM: curVm != null && Number.isFinite(curVm) && curVm >= 0 ? curVm : null,
+        isObservation: true,
+      });
+    }
+
     return { hourly, raw: j };
   },
 };
