@@ -81,6 +81,7 @@ export const metNoProvider: WeatherProvider = {
 
     const fromT = from.getTime();
     const toT = to.getTime();
+    const nowMs = Date.now();
     const hourly: import("@/lib/weather/types").NormalizedWind[] = [];
 
     for (const step of series) {
@@ -95,6 +96,8 @@ export const metNoProvider: WeatherProvider = {
       const spd = d.wind_speed;
       const gust = d.wind_speed_of_gust;
 
+      const isObservation = Math.abs(t - nowMs) < 90 * 60_000;
+
       hourly.push({
         observedAt,
         windSpeedMs: spd != null && Number.isFinite(spd) ? spd : null,
@@ -108,6 +111,7 @@ export const metNoProvider: WeatherProvider = {
             ? d.air_temperature
             : null,
         visibilityM: null,
+        ...(isObservation ? { isObservation: true } : {}),
       });
     }
 

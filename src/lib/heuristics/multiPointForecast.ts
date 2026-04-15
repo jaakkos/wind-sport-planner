@@ -107,7 +107,7 @@ export function pickHourClosestTo(
   let bestDiff = Infinity;
   for (const h of hourly) {
     const d = Math.abs(h.observedAt.getTime() - targetMs);
-    if (d < bestDiff) {
+    if (d < bestDiff || (d === bestDiff && h.isObservation && !best.isObservation)) {
       bestDiff = d;
       best = h;
     }
