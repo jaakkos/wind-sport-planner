@@ -31,7 +31,7 @@
     "@prisma/client": "^7.7.0",
     "@turf/bbox": "^7.3.4",
     "@turf/boolean-point-in-polygon": "^7.3.4",
-    "@turf/centroid": "^7.3.4",
+    "@turf/centroid": "^7.3.5",
     "@turf/helpers": "^7.3.4",
     "bcryptjs": "^3.0.3",
     "maplibre-gl": "^5.22.0",
