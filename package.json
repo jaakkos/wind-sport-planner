@@ -34,7 +34,7 @@
     "@turf/centroid": "^7.3.5",
     "@turf/helpers": "^7.3.4",
     "bcryptjs": "^3.0.3",
-    "maplibre-gl": "^5.22.0",
+    "maplibre-gl": "^5.23.0",
     "next": "16.2.3",
     "next-auth": "^5.0.0-beta.30",
     "nodemailer": "^8.0.5",
