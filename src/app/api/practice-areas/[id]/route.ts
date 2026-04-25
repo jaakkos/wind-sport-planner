@@ -1,7 +1,11 @@
-import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import type { Sport } from "@/generated/prisma/client";
 import { AreaLabelPreset, Prisma } from "@/generated/prisma/client";
+import {
+  isErrorResponse,
+  parseJsonBody,
+  requireUserSession,
+} from "@/lib/api/handler";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -44,26 +48,21 @@ export async function PATCH(
   req: Request,
   ctx: { params: Promise<{ id: string }> },
 ) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const session = await requireUserSession();
+  if (isErrorResponse(session)) return session;
   const { id } = await ctx.params;
 
   const existing = await prisma.practiceArea.findFirst({
-    where: { id, userId: session.user.id },
+    where: { id, userId: session.userId },
   });
   if (!existing) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const json = await req.json().catch(() => null);
-  const parsed = patchSchema.safeParse(json);
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
-  }
+  const body = await parseJsonBody(req, patchSchema);
+  if (isErrorResponse(body)) return body;
 
-  const u = parsed.data;
+  const u = body.data;
   const updated = await prisma.practiceArea.update({
     where: { id },
     data: {
@@ -96,13 +95,11 @@ export async function DELETE(
   _req: Request,
   ctx: { params: Promise<{ id: string }> },
 ) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const session = await requireUserSession();
+  if (isErrorResponse(session)) return session;
   const { id } = await ctx.params;
   const a = await prisma.practiceArea.findFirst({
-    where: { id, userId: session.user.id },
+    where: { id, userId: session.userId },
   });
   if (!a) return NextResponse.json({ error: "Not found" }, { status: 404 });
   await prisma.practiceArea.delete({ where: { id } });

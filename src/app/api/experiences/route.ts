@@ -1,8 +1,12 @@
-import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { centroidLngLatFromGeojson } from "@/lib/practiceArea/centroid";
 import { openMeteoProvider } from "@/lib/weather/providers/openMeteo";
 import type { Sport } from "@/generated/prisma/client";
+import {
+  isErrorResponse,
+  parseJsonBody,
+  requireUserSession,
+} from "@/lib/api/handler";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -14,10 +18,8 @@ const postSchema = z.object({
 });
 
 export async function GET(req: Request) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const session = await requireUserSession();
+  if (isErrorResponse(session)) return session;
 
   const url = new URL(req.url);
   const sport = url.searchParams.get("sport") as Sport | null;
@@ -27,7 +29,7 @@ export async function GET(req: Request) {
 
   const rows = await prisma.sessionExperience.findMany({
     where: {
-      userId: session.user.id,
+      userId: session.userId,
       ...(sport ? { sport } : {}),
     },
     include: { practiceArea: { select: { name: true } } },
@@ -53,25 +55,14 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const session = await requireUserSession();
+  if (isErrorResponse(session)) return session;
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-  }
+  const body = await parseJsonBody(req, postSchema);
+  if (isErrorResponse(body)) return body;
 
-  const parsed = postSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid body", details: parsed.error.flatten() }, { status: 400 });
-  }
-
-  const { practiceAreaId, sport, sessionSuitability } = parsed.data;
-  const occurredAt = new Date(parsed.data.occurredAt);
+  const { practiceAreaId, sport, sessionSuitability } = body.data;
+  const occurredAt = new Date(body.data.occurredAt);
   if (Number.isNaN(occurredAt.getTime())) {
     return NextResponse.json({ error: "Invalid occurredAt" }, { status: 400 });
   }
@@ -79,7 +70,7 @@ export async function POST(req: Request) {
   const area = await prisma.practiceArea.findFirst({
     where: {
       id: practiceAreaId,
-      OR: [{ userId: session.user.id }, { isPublic: true }],
+      OR: [{ userId: session.userId }, { isPublic: true }],
     },
   });
   if (!area) {
@@ -115,7 +106,7 @@ export async function POST(req: Request) {
 
   const created = await prisma.sessionExperience.create({
     data: {
-      userId: session.user.id,
+      userId: session.userId,
       practiceAreaId,
       sport,
       occurredAt,

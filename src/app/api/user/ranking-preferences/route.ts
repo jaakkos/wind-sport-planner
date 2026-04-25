@@ -1,4 +1,3 @@
-import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import {
@@ -9,6 +8,11 @@ import {
 } from "@/lib/heuristics/rankingPreferences";
 import { multiPointForecastPrefsSchema } from "@/lib/heuristics/ranking/multiPointPrefs";
 import { sportRankingPrefsSchema } from "@/lib/heuristics/ranking/sportPrefs";
+import {
+  isErrorResponse,
+  parseJsonBody,
+  requireUserSession,
+} from "@/lib/api/handler";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -54,13 +58,11 @@ function mergeRankingPreferences(
 }
 
 export async function GET() {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const session = await requireUserSession();
+  if (isErrorResponse(session)) return session;
 
   const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
+    where: { id: session.userId },
     select: { rankingPreferences: true },
   });
 
@@ -73,29 +75,18 @@ export async function GET() {
 }
 
 export async function PATCH(req: Request) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const session = await requireUserSession();
+  if (isErrorResponse(session)) return session;
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-  }
-
-  const parsed = patchBodySchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid body", details: parsed.error.flatten() }, { status: 400 });
-  }
+  const body = await parseJsonBody(req, patchBodySchema);
+  if (isErrorResponse(body)) return body;
 
   const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
+    where: { id: session.userId },
     select: { rankingPreferences: true },
   });
 
-  const merged = mergeRankingPreferences(user?.rankingPreferences ?? null, parsed.data);
+  const merged = mergeRankingPreferences(user?.rankingPreferences ?? null, body.data);
   if (!merged.ok) {
     return NextResponse.json(
       { error: "Invalid merged preferences", details: merged.error.flatten() },
@@ -104,7 +95,7 @@ export async function PATCH(req: Request) {
   }
 
   await prisma.user.update({
-    where: { id: session.user.id },
+    where: { id: session.userId },
     data: {
       rankingPreferences:
         merged.doc === null ? Prisma.DbNull : (merged.doc as Prisma.InputJsonValue),
