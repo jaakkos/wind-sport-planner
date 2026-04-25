@@ -19,12 +19,12 @@ import {
 import { resolvePracticeAreaWindSampleLocations } from "@/lib/heuristics/practiceAreaWindLocations";
 import { createElevationCache } from "@/lib/heuristics/windSamplePoints";
 import { directionRankFactor } from "@/lib/heuristics/windDirection";
-import type { ResolvedSportRankingOptions } from "@/lib/heuristics/rankingPreferences";
+import { parseRankingPreferencesDoc } from "@/lib/heuristics/rankingPreferences";
+import { resolveMultiPointForecastPrefs } from "@/lib/heuristics/ranking/multiPointPrefs";
 import {
-  parseRankingPreferencesDoc,
-  resolveMultiPointForecastPrefs,
   resolveSportRankingOptions,
-} from "@/lib/heuristics/rankingPreferences";
+  type ResolvedSportRankingOptions,
+} from "@/lib/heuristics/ranking/sportPrefs";
 import { gustPenalty, windFitScore } from "@/lib/heuristics/profiles";
 
 export type { RankedPracticeArea, RankedPracticeAreaWind } from "@/lib/heuristics/rankAreaTypes";
@@ -139,8 +139,11 @@ export async function rankPracticeAreas(args: {
   const prefsDoc = parseRankingPreferencesDoc(args.rankingPreferencesJson);
   const rankOpts =
     args.rankingOptions ??
-    resolveSportRankingOptions(args.sport, prefsDoc ?? undefined);
-  const mpPrefs = resolveMultiPointForecastPrefs(prefsDoc, args.userId != null);
+    resolveSportRankingOptions(args.sport, prefsDoc?.[args.sport]);
+  const mpPrefs = resolveMultiPointForecastPrefs(
+    prefsDoc?.multiPointForecast,
+    args.userId != null,
+  );
   const { from: windowFrom, to: windowTo } = forecastFetchWindow(args.at);
   const targetMs = args.at.getTime();
 

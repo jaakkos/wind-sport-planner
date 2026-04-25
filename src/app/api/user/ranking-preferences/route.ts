@@ -1,14 +1,14 @@
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
-import type { RankingPreferencesDoc } from "@/lib/heuristics/rankingPreferences";
 import {
   defaultRankingPreferencesResponse,
-  multiPointForecastPrefsSchema,
   parseRankingPreferencesDoc,
   rankingPreferencesDocSchema,
-  sportRankingPrefsSchema,
+  type RankingPreferencesDoc,
 } from "@/lib/heuristics/rankingPreferences";
+import { multiPointForecastPrefsSchema } from "@/lib/heuristics/ranking/multiPointPrefs";
+import { sportRankingPrefsSchema } from "@/lib/heuristics/ranking/sportPrefs";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 

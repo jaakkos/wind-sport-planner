@@ -7,7 +7,7 @@ import {
 } from "@/lib/heuristics/windSamplePoints";
 import type { NormalizedWind } from "@/lib/weather/types";
 import { angularDiffDeg } from "@/lib/heuristics/windDirection";
-import type { MultiPointForecastMode, MultiPointScoringPolicy } from "@/lib/heuristics/rankingPreferences";
+import type { MultiPointForecastMode, MultiPointScoringPolicy } from "@/lib/heuristics/ranking/multiPointPrefs";
 
 /** Bbox diagonal (km): cheap proxy for “how wide” the polygon is vs model grid. */
 export function polygonBboxDiagonalKm(poly: Polygon): number {

@@ -7,10 +7,8 @@ import { fetchForecastWithRouter } from "@/lib/weather/router";
 import type { NormalizedWind } from "@/lib/weather/types";
 import { pickHourClosestTo, polygonBboxDiagonalKm } from "@/lib/heuristics/multiPointForecast";
 import { resolvePracticeAreaWindSampleLocations } from "@/lib/heuristics/practiceAreaWindLocations";
-import {
-  parseRankingPreferencesDoc,
-  resolveMultiPointForecastPrefs,
-} from "@/lib/heuristics/rankingPreferences";
+import { parseRankingPreferencesDoc } from "@/lib/heuristics/rankingPreferences";
+import { resolveMultiPointForecastPrefs } from "@/lib/heuristics/ranking/multiPointPrefs";
 import { createElevationCache } from "@/lib/heuristics/windSamplePoints";
 
 function asPolygon(geojson: unknown): Polygon | null {
@@ -92,7 +90,10 @@ export async function getPracticeAreaForecastSamples(args: {
   if (!args.area.sports.includes(args.sport)) return null;
 
   const prefsDoc = parseRankingPreferencesDoc(args.rankingPreferencesJson);
-  const mpPrefs = resolveMultiPointForecastPrefs(prefsDoc, args.userId != null);
+  const mpPrefs = resolveMultiPointForecastPrefs(
+    prefsDoc?.multiPointForecast,
+    args.userId != null,
+  );
   const { from: windowFrom, to: windowTo } = forecastFetchWindow(args.at);
   const targetMs = args.at.getTime();
 

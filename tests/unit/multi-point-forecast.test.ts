@@ -8,7 +8,7 @@ import {
   MULTI_POINT_DIAMETER_KM_TRIGGER,
   MULTI_POINT_ELEV_RANGE_M_TRIGGER,
 } from "@/lib/heuristics/multiPointForecast";
-import { resolveMultiPointForecastPrefs } from "@/lib/heuristics/rankingPreferences";
+import { resolveMultiPointForecastPrefs } from "@/lib/heuristics/ranking/multiPointPrefs";
 import type { NormalizedWind } from "@/lib/weather/types";
 
 function w(
@@ -144,11 +144,9 @@ describe("resolveMultiPointForecastPrefs", () => {
     expect(g.maxSamples).toBe(4);
   });
 
-  it("respects saved doc for authed", () => {
+  it("respects saved prefs for authed", () => {
     const r = resolveMultiPointForecastPrefs(
-      {
-        multiPointForecast: { mode: "on", maxSamples: 7, scoringPolicy: "representative" },
-      },
+      { mode: "on", maxSamples: 7, scoringPolicy: "representative" },
       true,
     );
     expect(r.mode).toBe("on");

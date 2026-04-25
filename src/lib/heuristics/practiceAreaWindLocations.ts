@@ -4,7 +4,7 @@ import {
   elevationRangeInsidePolygonM,
   effectiveSamplePointCount,
 } from "@/lib/heuristics/multiPointForecast";
-import type { MultiPointForecastMode } from "@/lib/heuristics/rankingPreferences";
+import type { MultiPointForecastMode } from "@/lib/heuristics/ranking/multiPointPrefs";
 import {
   resolveWindForecastSamplePoints,
   windSamplePoolDensityHint,
