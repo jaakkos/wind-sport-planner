@@ -120,6 +120,43 @@ async function getForecastCached(
   return v;
 }
 
+/**
+ * Fetches the forecast hour closest to `targetMs` for each sample point and
+ * returns the collected samples plus the provider id of the last successful
+ * fetch (used for breakdown reporting).
+ */
+async function fetchForecastSamplesAtHour(args: {
+  points: [number, number][];
+  windowFrom: Date;
+  windowTo: Date;
+  targetMs: number;
+  forecastCache: Map<string, ForecastSeriesResult>;
+  elevationFor: (lat: number, lng: number) => Promise<number | null>;
+}): Promise<{ samples: NormalizedWind[]; providerId: string | null }> {
+  const samples: NormalizedWind[] = [];
+  let providerId: string | null = null;
+
+  for (const [lng, lat] of args.points) {
+    const altitudeM = metNoPreferredRegion(lat, lng)
+      ? await args.elevationFor(lat, lng)
+      : null;
+    const fc = await getForecastCached(
+      lat,
+      lng,
+      altitudeM,
+      args.windowFrom,
+      args.windowTo,
+      args.forecastCache,
+    );
+    providerId = fc?.providerId ?? providerId;
+    if (!fc?.hourly.length) continue;
+    const best = pickHourClosestTo(fc.hourly, args.targetMs);
+    if (best) samples.push(best);
+  }
+
+  return { samples, providerId };
+}
+
 export async function rankPracticeAreas(args: {
   /** When null (anonymous), experience-based boost is skipped. */
   userId: string | null;
@@ -176,26 +213,15 @@ export async function rankPracticeAreas(args: {
         elevationFor: elevationForPoint,
       });
 
-    const samplesAtHour: NormalizedWind[] = [];
-    let providerId: string | null = null;
-
-    for (const [lng, lat] of points) {
-      const altitudeM = metNoPreferredRegion(lat, lng)
-        ? await elevationForPoint(lat, lng)
-        : null;
-      const fc = await getForecastCached(
-        lat,
-        lng,
-        altitudeM,
+    const { samples: samplesAtHour, providerId } =
+      await fetchForecastSamplesAtHour({
+        points,
         windowFrom,
         windowTo,
+        targetMs,
         forecastCache,
-      );
-      providerId = fc?.providerId ?? providerId;
-      if (!fc?.hourly.length) continue;
-      const best = pickHourClosestTo(fc.hourly, targetMs);
-      if (best) samplesAtHour.push(best);
-    }
+        elevationFor: elevationForPoint,
+      });
 
     const breakdown: Record<string, unknown> = {
       providerId,
