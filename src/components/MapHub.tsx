@@ -19,10 +19,11 @@ import {
   ALL_TOOL_SECTIONS_OPEN,
   DEFAULT_TOOL_SECTIONS,
   type SidebarTab,
-  SIDEBAR_TAB_STORAGE,
   type ToolSectionKey,
   toolKeysForTab,
 } from "@/components/map-hub/constants";
+import { useSidebarTab } from "@/components/map-hub/hooks/useSidebarTab";
+import { useMapLayerToggles } from "@/components/map-hub/hooks/useMapLayerToggles";
 import { CollapsibleSection } from "@/components/map-hub/CollapsibleSection";
 import { HelpDisclosure, PersistedCollapsible } from "@/components/map-hub/MapHubDisclosures";
 import { ForecastTimeControl } from "@/components/map-hub/ForecastTimeControl";
@@ -47,12 +48,6 @@ import {
   maptilerOutdoorStyleUrl,
 } from "@/lib/map/styles";
 import type { RankedPracticeArea } from "@/lib/heuristics/rankAreaTypes";
-import {
-  defaultMapLayerToggles,
-  readMapLayerTogglesFromStorage,
-  writeMapLayerTogglesToStorage,
-  type MapLayerTogglesState,
-} from "@/lib/map/mapLayerToggles";
 import { formatVisibilityM } from "@/lib/weather/formatVisibility";
 import { yrNoHourlyTableUrlEn } from "@/lib/yrNoUrls";
 import {
@@ -237,30 +232,13 @@ export function MapHub() {
   const [toolSectionsOpen, setToolSectionsOpen] =
     useState<Record<ToolSectionKey, boolean>>(DEFAULT_TOOL_SECTIONS);
 
-  const [sidebarTab, setSidebarTab] = useState<SidebarTab>("plan");
+  const { tab: sidebarTab, setTab: setSidebarTab } = useSidebarTab();
 
   /** Avoid SSR/client mismatch for `datetime-local` default and similar. */
   const [clientReady, setClientReady] = useState(false);
   useEffect(() => {
     setClientReady(true);
   }, []);
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(SIDEBAR_TAB_STORAGE);
-      if (raw === "plan" || raw === "map" || raw === "you") setSidebarTab(raw);
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(SIDEBAR_TAB_STORAGE, sidebarTab);
-    } catch {
-      /* ignore */
-    }
-  }, [sidebarTab]);
 
   const expandCurrentTabSections = useCallback(() => {
     setToolSectionsOpen((s) => {
@@ -282,21 +260,8 @@ export function MapHub() {
     setToolSectionsOpen((s) => ({ ...s, [key]: !s[key] }));
   }, []);
 
-  const [mapLayerToggles, setMapLayerToggles] = useState<MapLayerTogglesState>(() =>
-    defaultMapLayerToggles(),
-  );
-
-  useEffect(() => {
-    setMapLayerToggles(readMapLayerTogglesFromStorage());
-  }, []);
-
-  const patchMapLayerToggles = useCallback((patch: Partial<MapLayerTogglesState>) => {
-    setMapLayerToggles((prev) => {
-      const next = { ...prev, ...patch };
-      writeMapLayerTogglesToStorage(next);
-      return next;
-    });
-  }, []);
+  const { toggles: mapLayerToggles, patch: patchMapLayerToggles } =
+    useMapLayerToggles();
 
   const browseInteractiveLayerIds = useMemo(() => {
     if (mapMode !== "browse") return [];
@@ -768,7 +733,7 @@ export function MapHub() {
       setSidebarTab("you");
       setToolSectionsOpen((s) => (s.draw ? s : { ...s, draw: true }));
     }
-  }, [mapMode]);
+  }, [mapMode, setSidebarTab]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -807,7 +772,7 @@ export function MapHub() {
       setToolSectionsOpen((s) => ({ ...s, windRank: true }));
       setMsg("Area optimal: click arrow tail, then head (downwind). Esc = cancel.");
     },
-    [mapMode],
+    [mapMode, setSidebarTab],
   );
 
   const cancelPickWind = useCallback(() => {
