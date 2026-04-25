@@ -24,6 +24,8 @@ import {
 } from "@/components/map-hub/constants";
 import { useSidebarTab } from "@/components/map-hub/hooks/useSidebarTab";
 import { useMapLayerToggles } from "@/components/map-hub/hooks/useMapLayerToggles";
+import { useMapBundle } from "@/components/map-hub/hooks/useMapBundle";
+import { useExperiences } from "@/components/map-hub/hooks/useExperiences";
 import { CollapsibleSection } from "@/components/map-hub/CollapsibleSection";
 import { HelpDisclosure, PersistedCollapsible } from "@/components/map-hub/MapHubDisclosures";
 import { ForecastTimeControl } from "@/components/map-hub/ForecastTimeControl";
@@ -86,24 +88,6 @@ import {
   windFieldSpatialProbePoints,
   WIND_MAP_ARROW_MAX_SAMPLES_SETTING,
 } from "@/lib/heuristics/windSamplePoints";
-
-type Bundle = {
-  activeSport: string;
-  practiceAreas: FeatureCollection;
-};
-
-type ExperienceRow = {
-  id: string;
-  practiceAreaId: string;
-  practiceAreaName: string;
-  sport: string;
-  occurredAt: string;
-  sessionSuitability: string;
-  windDirDeg: number | null;
-  windSpeedMs: number | null;
-  weatherProviderId: string | null;
-  weatherObservedAt: string | null;
-};
 
 type SportRankingFormState = {
   minWindMs: number;
@@ -186,8 +170,12 @@ export function MapHub() {
   const [basemap, setBasemap] = useState<BasemapId>("hybrid");
   const [reliefOpacity, setReliefOpacity] = useState(0.42);
   const [activeSport, setActiveSport] = useState<"kiteski" | "kitesurf">("kiteski");
-  const [bundle, setBundle] = useState<Bundle | null>(null);
-  const [bundleLoading, setBundleLoading] = useState(true);
+  const {
+    bundle,
+    loading: bundleLoading,
+    reload: loadBundle,
+  } = useMapBundle(activeSport);
+  const { experiences, reload: loadExperiences } = useExperiences(activeSport);
   const [ranked, setRanked] = useState<RankedPracticeArea[]>([]);
   const [rankLoading, setRankLoading] = useState(true);
   const [forecastAnchorMs, setForecastAnchorMs] = useState(() => floorToHourMs());
@@ -198,7 +186,6 @@ export function MapHub() {
   );
   const [selectedPracticeAreaId, setSelectedPracticeAreaId] = useState<string | null>(null);
   const [areaForecastSampleFc, setAreaForecastSampleFc] = useState<FeatureCollection | null>(null);
-  const [experiences, setExperiences] = useState<ExperienceRow[]>([]);
   const [editingAreaId, setEditingAreaId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -325,33 +312,6 @@ export function MapHub() {
     }
     return buildRasterBasemapStyle(basemap, reliefOpacity);
   }, [basemap, reliefOpacity]);
-
-  const loadBundle = useCallback(async () => {
-    setBundleLoading(true);
-    try {
-      const r = await fetch(`/api/map/bundle?activeSport=${activeSport}`);
-      if (!r.ok) return;
-      const j = (await r.json()) as Bundle;
-      setBundle(j);
-    } finally {
-      setBundleLoading(false);
-    }
-  }, [activeSport]);
-
-  useEffect(() => {
-    void loadBundle();
-  }, [loadBundle]);
-
-  const loadExperiences = useCallback(async () => {
-    const r = await fetch(`/api/experiences?sport=${activeSport}`);
-    if (!r.ok) return;
-    const j = (await r.json()) as { experiences: ExperienceRow[] };
-    setExperiences(j.experiences ?? []);
-  }, [activeSport]);
-
-  useEffect(() => {
-    void loadExperiences();
-  }, [loadExperiences]);
 
   const loadRankingPrefs = useCallback(async () => {
     setRankingPrefsLoading(true);
