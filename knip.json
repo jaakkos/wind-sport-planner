@@ -1,0 +1,37 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "src/app/**/{page,layout,route,not-found,error,loading,template,default}.{ts,tsx}",
+    "src/middleware.ts",
+    "src/auth.ts",
+    "tests/**/*.test.ts",
+    "e2e/**/*.spec.ts",
+    "scripts/**/*.{mjs,ts}",
+    "next.config.ts",
+    "playwright.config.ts",
+    "vitest.config.mts",
+    "eslint.config.mjs",
+    "postcss.config.mjs",
+    "prisma.config.ts"
+  ],
+  "project": [
+    "src/**/*.{ts,tsx}",
+    "tests/**/*.ts",
+    "e2e/**/*.ts",
+    "scripts/**/*.{mjs,ts}"
+  ],
+  "ignore": [
+    "src/generated/**",
+    "src/types/next-auth.d.ts"
+  ],
+  "ignoreDependencies": [
+    "pg"
+  ],
+  "next": true,
+  "vitest": true,
+  "playwright": true,
+  "eslint": true,
+  "postcss": true,
+  "prisma": true,
+  "tailwind": true
+}
