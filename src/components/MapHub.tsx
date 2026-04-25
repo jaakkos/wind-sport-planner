@@ -26,6 +26,7 @@ import { useSidebarTab } from "@/components/map-hub/hooks/useSidebarTab";
 import { useMapLayerToggles } from "@/components/map-hub/hooks/useMapLayerToggles";
 import { useMapBundle } from "@/components/map-hub/hooks/useMapBundle";
 import { useExperiences } from "@/components/map-hub/hooks/useExperiences";
+import { useForecastRanking } from "@/components/map-hub/hooks/useForecastRanking";
 import { CollapsibleSection } from "@/components/map-hub/CollapsibleSection";
 import { HelpDisclosure, PersistedCollapsible } from "@/components/map-hub/MapHubDisclosures";
 import { ForecastTimeControl } from "@/components/map-hub/ForecastTimeControl";
@@ -176,8 +177,6 @@ export function MapHub() {
     reload: loadBundle,
   } = useMapBundle(activeSport);
   const { experiences, reload: loadExperiences } = useExperiences(activeSport);
-  const [ranked, setRanked] = useState<RankedPracticeArea[]>([]);
-  const [rankLoading, setRankLoading] = useState(true);
   const [forecastAnchorMs, setForecastAnchorMs] = useState(() => floorToHourMs());
   const [hoursAhead, setHoursAhead] = useState(0);
   const forecastAtIso = useMemo(
@@ -189,8 +188,6 @@ export function MapHub() {
   const [editingAreaId, setEditingAreaId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  /** Shown in Plan when ranking fails so users are not stuck with an empty list and no explanation. */
-  const [rankLoadError, setRankLoadError] = useState<string | null>(null);
   const [terrainClick, setTerrainClick] = useState<ClickTerrain | null>(null);
   /** Screen position for terrain card (anchored to map click, updates on pan/zoom). */
   const [terrainPopoverPos, setTerrainPopoverPos] = useState<{
@@ -207,6 +204,17 @@ export function MapHub() {
   /** ± degrees around each area’s saved optimal for full direction multiplier before taper. */
   const [optimalWindHalfWidthDeg, setOptimalWindHalfWidthDeg] = useState(30);
   const [sectorHalfWidthDeg, setSectorHalfWidthDeg] = useState(45);
+  const {
+    ranked,
+    loading: rankLoading,
+    error: rankLoadError,
+    reload: loadRank,
+  } = useForecastRanking({
+    sport: activeSport,
+    atIso: forecastAtIso,
+    optimalWindHalfWidthDeg,
+    onError: setMsg,
+  });
   /** Logged-in: editable wind bands & weights for forecast ranking (per sport). */
   const [rankingForm, setRankingForm] = useState<{
     kiteski: SportRankingFormState;
@@ -362,43 +370,6 @@ export function MapHub() {
     [activeSport],
   );
 
-  const loadRank = useCallback(async () => {
-    setRankLoadError(null);
-    setRankLoading(true);
-    const q = new URLSearchParams({
-      sport: activeSport,
-      at: forecastAtIso,
-    });
-    q.set("optimalWindHalfWidthDeg", String(optimalWindHalfWidthDeg));
-    try {
-      const r = await fetch(`/api/forecast/rank?${q.toString()}`);
-      if (!r.ok) {
-        let detail = "";
-        try {
-          const t = await r.text();
-          detail = t ? ` ${t.slice(0, 240)}` : "";
-        } catch {
-          /* ignore */
-        }
-        const line = `Forecast ranking failed (HTTP ${r.status}).${detail}`;
-        setRankLoadError(line);
-        setMsg(`Forecast ranking failed (${r.status}). Wind overlays may be missing.`);
-        setRanked([]);
-        return;
-      }
-      const j = (await r.json()) as { ranked: RankedPracticeArea[] };
-      setRanked(j.ranked ?? []);
-      setRankLoadError(null);
-    } catch (e) {
-      const m = e instanceof Error ? e.message : String(e);
-      setRankLoadError(`Forecast ranking could not load: ${m}`);
-      setMsg(`Forecast ranking failed. ${m}`);
-      setRanked([]);
-    } finally {
-      setRankLoading(false);
-    }
-  }, [activeSport, forecastAtIso, optimalWindHalfWidthDeg]);
-
   const saveRankingPrefsForActiveSport = useCallback(async () => {
     if (!rankingForm || !multiPointForm) return;
     const s = activeSport;
@@ -469,10 +440,6 @@ export function MapHub() {
     await loadRank();
   }, [activeSport, loadRank]);
 
-  useEffect(() => {
-    const t = setTimeout(() => void loadRank(), 300);
-    return () => clearTimeout(t);
-  }, [loadRank]);
 
   useEffect(() => {
     const fc = bundle?.practiceAreas;
