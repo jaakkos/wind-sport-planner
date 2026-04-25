@@ -4,21 +4,24 @@
  * callers can surface it to the user.
  */
 
+export type WindSectorTuple = readonly [number, number];
+
 export type PracticeAreaCreatePayload = {
   geojson: GeoJSON.Polygon;
   sports: string[];
   labelPreset: string;
   name: string;
-  windSectors?: [number, number][];
+  windSectors?: readonly WindSectorTuple[];
 };
 
 export type PracticeAreaPatchPayload = {
   geojson?: GeoJSON.Polygon;
-  optimalWindFromDeg?: number;
+  optimalWindFromDeg?: number | null;
   name?: string;
   sports?: string[];
-  windSectors?: [number, number][] | null;
+  windSectors?: readonly WindSectorTuple[] | null;
   labelPreset?: string;
+  isPublic?: boolean;
 };
 
 async function ensureOk(r: Response): Promise<Response> {
@@ -52,5 +55,10 @@ export async function patchPracticeArea(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+  return ensureOk(r);
+}
+
+export async function deletePracticeArea(id: string): Promise<Response> {
+  const r = await fetch(`/api/practice-areas/${id}`, { method: "DELETE" });
   return ensureOk(r);
 }

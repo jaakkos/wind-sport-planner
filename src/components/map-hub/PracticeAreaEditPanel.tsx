@@ -4,6 +4,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FeatureCollection } from "geojson";
 import { sectorsFromCenter } from "@/lib/heuristics/windDirection";
 import { areaFeatureId } from "@/lib/map/polygons";
+import {
+  deletePracticeArea,
+  patchPracticeArea,
+  type PracticeAreaPatchPayload,
+} from "@/lib/practiceArea/client";
 import { AreaForecastSamples } from "./AreaForecastSamples";
 import { PersistedCollapsible } from "./MapHubDisclosures";
 import { hubOverlayZ } from "./mapHubOverlayZ";
@@ -96,16 +101,11 @@ export function PracticeAreaEditPanel({
     );
   }, [areaId, props?.name, props?.sports, props?.labelPreset, props?.optimalWindFromDeg, props?.isPublic]);
 
-  async function patch(body: Record<string, unknown>) {
+  async function patch(body: PracticeAreaPatchPayload) {
     setBusy(true);
     setLocalMsg(null);
     try {
-      const r = await fetch(`/api/practice-areas/${areaId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!r.ok) throw new Error(await r.text());
+      await patchPracticeArea(areaId, body);
       await onSaved();
       setLocalMsg("Saved.");
     } catch (e) {
@@ -185,8 +185,7 @@ export function PracticeAreaEditPanel({
     setBusy(true);
     setLocalMsg(null);
     try {
-      const r = await fetch(`/api/practice-areas/${areaId}`, { method: "DELETE" });
-      if (!r.ok) throw new Error(await r.text());
+      await deletePracticeArea(areaId);
       await onSaved();
       onClose();
     } catch (e) {
