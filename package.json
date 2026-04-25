@@ -59,7 +59,7 @@
     "@vitest/coverage-v8": "^4.1.4",
     "dotenv": "^17.4.2",
     "eslint": "^10",
-    "globals": "^16.4.0",
+    "globals": "^17.5.0",
     "typescript-eslint": "^8.58.2",
     "tailwindcss": "^4",
     "typescript": "^6",
