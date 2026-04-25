@@ -86,6 +86,10 @@ import {
   WIND_FIELD_MAX_ARROWS,
 } from "@/lib/map/polygons";
 import {
+  createPracticeArea,
+  patchPracticeArea,
+} from "@/lib/practiceArea/client";
+import {
   windFieldSpatialProbePoints,
   WIND_MAP_ARROW_MAX_SAMPLES_SETTING,
 } from "@/lib/heuristics/windSamplePoints";
@@ -534,19 +538,13 @@ export function MapHub() {
     setMsg(null);
     try {
       const nameRaw = (nameOverride ?? drawAreaName).trim() || "Untitled area";
-      const body: Record<string, unknown> = {
+      await createPracticeArea({
         geojson: poly,
         sports: [activeSport],
         labelPreset: "other",
         name: nameRaw.slice(0, 120),
-      };
-      if (windSectors?.length) body.windSectors = windSectors;
-      const r = await fetch("/api/practice-areas", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        ...(windSectors?.length ? { windSectors } : {}),
       });
-      if (!r.ok) throw new Error(await r.text());
       await loadBundle();
       await loadRank();
       setDrawAreaName("");
@@ -573,12 +571,7 @@ export function MapHub() {
         setLoading(true);
         setMsg(null);
         try {
-          const r = await fetch(`/api/practice-areas/${editTarget}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ geojson: poly }),
-          });
-          if (!r.ok) throw new Error(await r.text());
+          await patchPracticeArea(editTarget, { geojson: poly });
           await loadBundle();
           await loadRank();
           setMsg("Boundary updated.");
@@ -1665,12 +1658,7 @@ export function MapHub() {
             setLoading(true);
             void (async () => {
               try {
-                const r = await fetch(`/api/practice-areas/${aid}`, {
-                  method: "PATCH",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ optimalWindFromDeg: from }),
-                });
-                if (!r.ok) throw new Error(await r.text());
+                await patchPracticeArea(aid, { optimalWindFromDeg: from });
                 await loadBundle();
                 await loadRank();
                 setMsg(
