@@ -31,6 +31,7 @@ import {
   useRankingPreferences,
   type MultiPointForecastFormState,
 } from "@/components/map-hub/hooks/useRankingPreferences";
+import { useForecastTime } from "@/components/map-hub/hooks/useForecastTime";
 import { CollapsibleSection } from "@/components/map-hub/CollapsibleSection";
 import { HelpDisclosure, PersistedCollapsible } from "@/components/map-hub/MapHubDisclosures";
 import { ForecastTimeControl } from "@/components/map-hub/ForecastTimeControl";
@@ -132,12 +133,12 @@ export function MapHub() {
     reload: loadBundle,
   } = useMapBundle(activeSport);
   const { experiences, reload: loadExperiences } = useExperiences(activeSport);
-  const [forecastAnchorMs, setForecastAnchorMs] = useState(() => floorToHourMs());
-  const [hoursAhead, setHoursAhead] = useState(0);
-  const forecastAtIso = useMemo(
-    () => new Date(forecastAnchorMs + hoursAhead * 3600000).toISOString(),
-    [forecastAnchorMs, hoursAhead],
-  );
+  const {
+    setAnchorMs: setForecastAnchorMs,
+    hoursAhead,
+    setHoursAhead,
+    atIso: forecastAtIso,
+  } = useForecastTime();
   const [selectedPracticeAreaId, setSelectedPracticeAreaId] = useState<string | null>(null);
   const [areaForecastSampleFc, setAreaForecastSampleFc] = useState<FeatureCollection | null>(null);
   const [editingAreaId, setEditingAreaId] = useState<string | null>(null);
