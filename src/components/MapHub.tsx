@@ -12,7 +12,6 @@ import MapGL, {
   NavigationControl,
   Source,
 } from "react-map-gl/maplibre";
-import bbox from "@turf/bbox";
 import centroid from "@turf/centroid";
 import type { Feature, FeatureCollection, Polygon } from "geojson";
 import { type SidebarTab } from "@/components/map-hub/constants";
@@ -27,6 +26,7 @@ import {
 } from "@/components/map-hub/hooks/useRankingPreferences";
 import { useForecastTime } from "@/components/map-hub/hooks/useForecastTime";
 import { useToolSections } from "@/components/map-hub/hooks/useToolSections";
+import { useFitMapToPracticeAreas } from "@/components/map-hub/hooks/useFitMapToPracticeAreas";
 import { CollapsibleSection } from "@/components/map-hub/CollapsibleSection";
 import { HelpDisclosure, PersistedCollapsible } from "@/components/map-hub/MapHubDisclosures";
 import { ForecastTimeControl } from "@/components/map-hub/ForecastTimeControl";
@@ -114,8 +114,6 @@ export function MapHub() {
   }, [sessionPending, isAuthed]);
 
   const mapRef = useRef<MapRef>(null);
-  /** Avoid re-fitting the same practice-area set when rank/bundle updates. */
-  const lastPracticeAreaFitSigRef = useRef<string>("");
   /** Bumps on map `load` so effects can re-sync icons after the map instance exists. */
   const [mapEpoch, setMapEpoch] = useState(0);
   const [mapZoom, setMapZoom] = useState(5);
@@ -265,50 +263,12 @@ export function MapHub() {
     return buildRasterBasemapStyle(basemap, reliefOpacity);
   }, [basemap, reliefOpacity]);
 
-  useEffect(() => {
-    const fc = bundle?.practiceAreas;
-    if (!fc?.features.length) return;
-    const ids = fc.features
-      .map((f) => areaFeatureId(f))
-      .filter((id) => id.length > 0)
-      .sort()
-      .join(",");
-    const sig = `${activeSport}:${ids}`;
-    if (lastPracticeAreaFitSigRef.current === sig) return;
-
-    const map = mapRef.current?.getMap();
-    if (!map) return;
-
-    const runFit = () => {
-      if (lastPracticeAreaFitSigRef.current === sig) return;
-      try {
-        const bounds = bbox(fc as FeatureCollection);
-        const [minLng, minLat, maxLng, maxLat] = bounds;
-        if (![minLng, minLat, maxLng, maxLat].every(Number.isFinite)) return;
-        const sidebarPad =
-          typeof window !== "undefined"
-            ? Math.min(380, Math.round(window.innerWidth * 0.36))
-            : 72;
-        map.fitBounds(
-          [
-            [minLng, minLat],
-            [maxLng, maxLat],
-          ],
-          {
-            padding: { top: 64, bottom: 64, left: sidebarPad, right: 48 },
-            maxZoom: 14,
-            duration: 500,
-          },
-        );
-        lastPracticeAreaFitSigRef.current = sig;
-      } catch {
-        /* invalid geometry for bbox */
-      }
-    };
-
-    if (map.isStyleLoaded()) runFit();
-    else map.once("load", runFit);
-  }, [bundle?.practiceAreas, activeSport, mapEpoch]);
+  useFitMapToPracticeAreas({
+    mapRef,
+    practiceAreas: bundle?.practiceAreas ?? null,
+    activeSport,
+    mapEpoch,
+  });
 
   const areasColored = useMemo(() => {
     if (!bundle?.practiceAreas) return null;
