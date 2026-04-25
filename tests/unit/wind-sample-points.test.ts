@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   selectSpatiallyDispersedLngLat,
   stratifyLngLatByElevationRank,
-} from "@/lib/map/mapHubHelpers";
+} from "@/lib/map/polygons";
 import {
   createElevationCache,
   latLngElevationKey,

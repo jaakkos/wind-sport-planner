@@ -3,7 +3,7 @@ import {
   sampleWindFieldGridCandidates,
   selectSpatiallyDispersedLngLat,
   stratifyLngLatByElevationRank,
-} from "@/lib/map/mapHubHelpers";
+} from "@/lib/map/polygons";
 
 const POOL_DENSITY_MULT = 8;
 const POOL_DENSITY_MIN = 48;

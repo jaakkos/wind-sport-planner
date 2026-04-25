@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { signOut } from "next-auth/react";
 import type { Dispatch, SetStateAction } from "react";
-import { areaFeatureId, cardinalFromDeg, toDatetimeLocalInput } from "@/lib/map/mapHubHelpers";
+import { cardinalFromDeg, toDatetimeLocalInput } from "@/lib/map/mapHubHelpers";
+import { areaFeatureId } from "@/lib/map/polygons";
 import { CollapsibleSection } from "./CollapsibleSection";
 import {
   hubBtnPrimary,

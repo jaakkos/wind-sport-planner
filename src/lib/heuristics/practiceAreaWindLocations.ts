@@ -1,5 +1,5 @@
 import type { Polygon } from "geojson";
-import { sampleWindFieldGridCandidates } from "@/lib/map/mapHubHelpers";
+import { sampleWindFieldGridCandidates } from "@/lib/map/polygons";
 import {
   elevationRangeInsidePolygonM,
   effectiveSamplePointCount,

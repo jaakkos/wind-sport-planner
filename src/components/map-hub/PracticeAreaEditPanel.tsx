@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FeatureCollection } from "geojson";
 import { sectorsFromCenter } from "@/lib/heuristics/windDirection";
-import { areaFeatureId } from "@/lib/map/mapHubHelpers";
+import { areaFeatureId } from "@/lib/map/polygons";
 import { AreaForecastSamples } from "./AreaForecastSamples";
 import { PersistedCollapsible } from "./MapHubDisclosures";
 import { hubOverlayZ } from "./mapHubOverlayZ";

@@ -1,6 +1,6 @@
 import bbox from "@turf/bbox";
 import type { Feature, Polygon } from "geojson";
-import { haversineKm } from "@/lib/map/mapHubHelpers";
+import { haversineKm } from "@/lib/map/polygons";
 import {
   ELEVATION_RANGE_MAX_PROBES,
   windFieldSpatialProbePoints,
