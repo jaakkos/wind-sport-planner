@@ -22,7 +22,9 @@
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:ui": "playwright test --ui",
     "test:all": "npm run test && npm run test:e2e",
-    "playwright:install": "playwright install chromium"
+    "playwright:install": "playwright install chromium",
+    "audit:dead": "knip",
+    "audit:cycles": "madge --circular --extensions ts,tsx src"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",
@@ -59,10 +61,14 @@
     "@vitest/coverage-v8": "^4.1.4",
     "dotenv": "^17.4.2",
     "eslint": "^10",
+    "eslint-config-prettier": "^10.1.8",
     "globals": "^17.5.0",
-    "typescript-eslint": "^8.58.2",
+    "knip": "^6.7.0",
+    "madge": "^8.0.0",
+    "prettier": "^3.8.3",
     "tailwindcss": "^4",
     "typescript": "^6",
+    "typescript-eslint": "^8.58.2",
     "vitest": "^4.1.4"
   },
   "overrides": {
