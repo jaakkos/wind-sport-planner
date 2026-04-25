@@ -182,6 +182,46 @@ type AreaWindBuildResult = {
 };
 
 /**
+ * Combines the wind-fit score, gust penalty, experience boost and direction
+ * factor into a 0–100 area score. Returned `breakdown` fields are merged into
+ * the area's debug record so the API caller can see how the score was built.
+ */
+function computeAreaScore(args: {
+  sport: Sport;
+  built: AreaWindBuildResult;
+  rankOpts: ResolvedSportRankingOptions;
+  boost: number;
+  optimalMatchHalfWidthDeg: number;
+  areaOptimalWindFromDeg: number | null;
+}): { score: number; breakdown: Record<string, unknown> } {
+  const { built, rankOpts, boost } = args;
+  const fit = windFitScore(args.sport, built.fitSpeedMs, rankOpts.bands);
+  const gp = gustPenalty(
+    built.gustForPenaltyMs,
+    built.refSpeedForGustMs,
+    rankOpts.gustPenaltyScale,
+  );
+  const dirEff = 1 + (built.dirFactor - 1) * rankOpts.directionEmphasis;
+  const raw = Math.max(0, fit.score * rankOpts.windFitScale - gp);
+  const score = Math.round(Math.min(100, raw * boost * dirEff));
+
+  return {
+    score,
+    breakdown: {
+      experienceBoost: boost,
+      directionFactor: built.dirFactor,
+      areaOptimalWindFromDeg: args.areaOptimalWindFromDeg,
+      optimalMatchHalfWidthDeg: args.optimalMatchHalfWidthDeg,
+      rankingBands: rankOpts.bands,
+      windFitScale: rankOpts.windFitScale,
+      gustPenaltyScale: rankOpts.gustPenaltyScale,
+      directionEmphasis: rankOpts.directionEmphasis,
+      directionEffective: dirEff,
+    },
+  };
+}
+
+/**
  * Collapses the per-spot forecast samples into a single wind shape used for
  * scoring + display. Returns null when multi-point aggregation cannot produce
  * a representative result (caller treats that as "no usable forecast").
@@ -363,7 +403,7 @@ export async function rankPracticeAreas(args: {
       continue;
     }
 
-    const { best, wind, fitSpeedMs, gustForPenaltyMs, refSpeedForGustMs, dirFactor } = built;
+    const { best, wind } = built;
     if (built.multiPointSummary) {
       breakdown.multiPointSummary = built.multiPointSummary;
     }
@@ -371,13 +411,6 @@ export async function rankPracticeAreas(args: {
     breakdown.windDirDeg = best.windDirDeg;
     breakdown.visibilityM = best.visibilityM;
 
-    const fit = windFitScore(args.sport, fitSpeedMs, rankOpts.bands);
-    const gp = gustPenalty(
-      gustForPenaltyMs,
-      refSpeedForGustMs,
-      rankOpts.gustPenaltyScale,
-    );
-    let score = Math.max(0, fit.score * rankOpts.windFitScale - gp);
     const boost = await experienceBoost(
       args.userId,
       area.id,
@@ -385,17 +418,15 @@ export async function rankPracticeAreas(args: {
       best.windDirDeg,
       best.windSpeedMs,
     );
-    breakdown.experienceBoost = boost;
-    breakdown.directionFactor = dirFactor;
-    breakdown.areaOptimalWindFromDeg = area.optimalWindFromDeg;
-    breakdown.optimalMatchHalfWidthDeg = halfW;
-    breakdown.rankingBands = rankOpts.bands;
-    breakdown.windFitScale = rankOpts.windFitScale;
-    breakdown.gustPenaltyScale = rankOpts.gustPenaltyScale;
-    breakdown.directionEmphasis = rankOpts.directionEmphasis;
-    const dirEff = 1 + (dirFactor - 1) * rankOpts.directionEmphasis;
-    breakdown.directionEffective = dirEff;
-    score = Math.round(Math.min(100, score * boost * dirEff));
+    const { score, breakdown: scoringBreakdown } = computeAreaScore({
+      sport: args.sport,
+      built,
+      rankOpts,
+      boost,
+      optimalMatchHalfWidthDeg: halfW,
+      areaOptimalWindFromDeg: area.optimalWindFromDeg,
+    });
+    Object.assign(breakdown, scoringBreakdown);
 
     results.push({
       areaId: area.id,
