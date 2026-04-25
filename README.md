@@ -94,7 +94,6 @@ Build: `npm ci && npm run build`. **Pre-deploy:** `npx prisma migrate deploy`.
 | GET | `/api/experiences?sport=` | List session experiences (optional sport filter) |
 | POST | `/api/experiences` | Log experience: `practiceAreaId`, `sport`, `occurredAt`, `sessionSuitability` — fills archive wind at area centroid |
 | DELETE | `/api/experiences/[id]` | Remove an experience |
-| POST | `/api/windlog` | Structured wind log (legacy; tied to `Activity` rows) |
 | GET | `/api/forecast/rank` | Rank areas for `sport` + `at`; optional `optimalWindHalfWidthDeg` (5–90) scales direction match vs each area’s saved optimal / sectors. Forecast source in `breakdown.providerId`: `met_no` (Europe box, terrain via `altitudeM`) or `open_meteo`. `wind.visibilityM` when present (Open-Meteo) — not used in score |
 | GET | `/api/elevation?lat=&lng=` | Point elevation (m AMSL) via Open-Meteo |
 | POST | `/api/cron/sync` | Bearer `CRON_SECRET` — reserved ping (noop) |
@@ -106,7 +105,7 @@ The repo includes **three layers** so you can refactor dependencies and ship wit
 | Layer | Tool | What it covers |
 |--------|------|----------------|
 | **Unit** | [Vitest](https://vitest.dev/) | Pure logic: heuristics, Zod wind-log schema, FMI stub, weather router (with `fetch` mocked). |
-| **Functional** | Vitest + `vi.mock` | Next **Route Handlers** (`POST /api/windlog`, `POST /api/cron/sync`) with mocked `auth` and Prisma — no running DB required for these files. |
+| **Functional** | Vitest + `vi.mock` | Next **Route Handlers** (`POST /api/cron/sync`) with mocked `auth` and Prisma — no running DB required for these files. |
 | **End-to-end** | [Playwright](https://playwright.dev/) | Real browser against `next dev`: home page, login UI, `/map` redirect when logged out (needs `DATABASE_URL` + migrated DB for the map gate). |
 
 ### Commands
