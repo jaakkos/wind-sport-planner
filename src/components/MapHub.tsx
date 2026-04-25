@@ -66,16 +66,25 @@ import {
 import { clampArrowLengthInsidePolygon } from "@/lib/map/windArrowLength";
 import {
   floorToHourMs,
+  rankColor,
   toDatetimeLocalInput,
   terrainPopoverScreenPosition,
 } from "@/lib/map/mapHubHelpers";
 import {
   cardinalFromDeg,
   windCompactSummary,
+  windFromFromDownwindArrow,
   windMultiPointSubtitle,
+  windToFromWindFrom,
 } from "@/lib/map/windFormat";
 import {
+  areaFeatureId,
+  bearingDeg,
+  closePolygonCoordinates,
+  haversineKm,
+  kmToScreenPx,
   MAX_TOTAL_WIND_FIELD_MARKERS,
+  outerRingOpenCoords,
   WIND_FIELD_MAX_ARROWS,
 } from "@/lib/map/polygons";
 import {
@@ -157,88 +166,6 @@ type ClickTerrain = {
   loading: boolean;
   error?: string;
 };
-
-function rankColor(score: number) {
-  if (score >= 70) return "#22c55e";
-  if (score >= 40) return "#eab308";
-  if (score > 0) return "#f97316";
-  return "#94a3b8";
-}
-
-function closePolygonCoordinates(ring: [number, number][]): GeoJSON.Polygon | null {
-  if (ring.length < 3) return null;
-  const closed: [number, number][] = ring.map((p) => [...p] as [number, number]);
-  const f = closed[0]!;
-  const l = closed[closed.length - 1]!;
-  if (l[0] !== f[0] || l[1] !== f[1]) closed.push([f[0], f[1]]);
-  return { type: "Polygon", coordinates: [closed] };
-}
-
-/** Outer ring without repeated closing coordinate (for editing vertices). */
-function outerRingOpenCoords(poly: GeoJSON.Polygon): [number, number][] {
-  const ring = poly.coordinates[0];
-  if (!ring?.length) return [];
-  const out = ring.map(([lng, lat]) => [lng, lat] as [number, number]);
-  const f = out[0]!;
-  const l = out[out.length - 1]!;
-  if (f[0] === l[0] && f[1] === l[1]) return out.slice(0, -1);
-  return out;
-}
-
-function areaFeatureId(f: Feature): string {
-  const props = (f.properties ?? {}) as { id?: string };
-  return String(f.id ?? props.id ?? "");
-}
-
-/** Great-circle distance in km (for wind-arrow preview length). */
-function haversineKm(lng1: number, lat1: number, lng2: number, lat2: number): number {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
-}
-
-/** Initial bearing from A to B, degrees clockwise from north (0–360). */
-function bearingDeg(lngA: number, latA: number, lngB: number, latB: number): number {
-  const φ1 = (latA * Math.PI) / 180;
-  const φ2 = (latB * Math.PI) / 180;
-  const Δλ = ((lngB - lngA) * Math.PI) / 180;
-  const y = Math.sin(Δλ) * Math.cos(φ2);
-  const x =
-    Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
-  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
-}
-
-/** Arrow tail → head points **downwind**; returns meteorological wind-from (°). */
-function windFromFromDownwindArrow(
-  tailLng: number,
-  tailLat: number,
-  headLng: number,
-  headLat: number,
-): number {
-  const windTo = bearingDeg(tailLng, tailLat, headLng, headLat);
-  return (windTo + 180) % 360;
-}
-
-/** Arrow on map points where wind blows; ranking uses wind-from. */
-function windToFromWindFrom(windFromDeg: number): number {
-  return (windFromDeg + 180) % 360;
-}
-
-/** Web Mercator meters per pixel at latitude (MapLibre 512 px world width). */
-function metersPerPixelAtLatitude(latDeg: number, zoom: number): number {
-  const cosLat = Math.cos((latDeg * Math.PI) / 180);
-  return (40075016.686 * Math.max(cosLat, 0.02)) / (512 * Math.pow(2, zoom));
-}
-
-function kmToScreenPx(km: number, latDeg: number, zoom: number): number {
-  return (km * 1000) / metersPerPixelAtLatitude(latDeg, zoom);
-}
 
 export function MapHub() {
   const { status } = useSession();
