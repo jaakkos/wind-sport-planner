@@ -15,13 +15,7 @@ import MapGL, {
 import bbox from "@turf/bbox";
 import centroid from "@turf/centroid";
 import type { Feature, FeatureCollection, Polygon } from "geojson";
-import {
-  ALL_TOOL_SECTIONS_OPEN,
-  DEFAULT_TOOL_SECTIONS,
-  type SidebarTab,
-  type ToolSectionKey,
-  toolKeysForTab,
-} from "@/components/map-hub/constants";
+import { type SidebarTab } from "@/components/map-hub/constants";
 import { useSidebarTab } from "@/components/map-hub/hooks/useSidebarTab";
 import { useMapLayerToggles } from "@/components/map-hub/hooks/useMapLayerToggles";
 import { useMapBundle } from "@/components/map-hub/hooks/useMapBundle";
@@ -32,6 +26,7 @@ import {
   type MultiPointForecastFormState,
 } from "@/components/map-hub/hooks/useRankingPreferences";
 import { useForecastTime } from "@/components/map-hub/hooks/useForecastTime";
+import { useToolSections } from "@/components/map-hub/hooks/useToolSections";
 import { CollapsibleSection } from "@/components/map-hub/CollapsibleSection";
 import { HelpDisclosure, PersistedCollapsible } from "@/components/map-hub/MapHubDisclosures";
 import { ForecastTimeControl } from "@/components/map-hub/ForecastTimeControl";
@@ -188,35 +183,20 @@ export function MapHub() {
     onError: setMsg,
     onClearError: () => setMsg(null),
   });
-  const [toolSectionsOpen, setToolSectionsOpen] =
-    useState<Record<ToolSectionKey, boolean>>(DEFAULT_TOOL_SECTIONS);
-
   const { tab: sidebarTab, setTab: setSidebarTab } = useSidebarTab();
+  const {
+    open: toolSectionsOpen,
+    toggle: toggleToolSection,
+    openSection: openToolSection,
+    expandCurrentTab: expandCurrentTabSections,
+    collapseCurrentTab: collapseCurrentTabSections,
+    expandAll: expandAllToolSections,
+  } = useToolSections(sidebarTab);
 
   /** Avoid SSR/client mismatch for `datetime-local` default and similar. */
   const [clientReady, setClientReady] = useState(false);
   useEffect(() => {
     setClientReady(true);
-  }, []);
-
-  const expandCurrentTabSections = useCallback(() => {
-    setToolSectionsOpen((s) => {
-      const next = { ...s };
-      for (const k of toolKeysForTab(sidebarTab)) next[k] = true;
-      return next;
-    });
-  }, [sidebarTab]);
-
-  const collapseCurrentTabSections = useCallback(() => {
-    setToolSectionsOpen((s) => {
-      const next = { ...s };
-      for (const k of toolKeysForTab(sidebarTab)) next[k] = false;
-      return next;
-    });
-  }, [sidebarTab]);
-
-  const toggleToolSection = useCallback((key: ToolSectionKey) => {
-    setToolSectionsOpen((s) => ({ ...s, [key]: !s[key] }));
   }, []);
 
   const { toggles: mapLayerToggles, patch: patchMapLayerToggles } =
@@ -502,9 +482,9 @@ export function MapHub() {
   useEffect(() => {
     if (mapMode === "draw") {
       setSidebarTab("you");
-      setToolSectionsOpen((s) => (s.draw ? s : { ...s, draw: true }));
+      openToolSection("draw");
     }
-  }, [mapMode, setSidebarTab]);
+  }, [mapMode, setSidebarTab, openToolSection]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -531,7 +511,7 @@ export function MapHub() {
       if (mapMode === "draw") {
         setMsg("Finish or cancel area drawing first.");
         setSidebarTab("you");
-        setToolSectionsOpen((s) => ({ ...s, draw: true }));
+        openToolSection("draw");
         return;
       }
       setWindPickAreaId(id);
@@ -540,10 +520,10 @@ export function MapHub() {
       setTerrainClick(null);
       setMapMode("pickWind");
       setSidebarTab("plan");
-      setToolSectionsOpen((s) => ({ ...s, windRank: true }));
+      openToolSection("windRank");
       setMsg("Area optimal: click arrow tail, then head (downwind). Esc = cancel.");
     },
-    [mapMode, setSidebarTab],
+    [mapMode, setSidebarTab, openToolSection],
   );
 
   const cancelPickWind = useCallback(() => {
@@ -807,7 +787,7 @@ export function MapHub() {
               <button
                 type="button"
                 className="rounded-lg px-2 py-1 text-[10px] font-medium text-app-fg-subtle transition-colors hover:bg-app-surface/90"
-                onClick={() => setToolSectionsOpen({ ...ALL_TOOL_SECTIONS_OPEN })}
+                onClick={() => expandAllToolSections()}
                 title="Expand every section in every tab"
               >
                 All sections
