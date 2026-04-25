@@ -2,7 +2,7 @@
 #
 # On first apply, Render will:
 # - Create Postgres `fjelllift-frankfurt` (EU) and inject DATABASE_URL into the web service
-# - Generate AUTH_SECRET and CRON_SECRET
+# - Generate AUTH_SECRET
 # - Prompt for Resend (HTTP email — Render blocks outbound SMTP on some plans; same pattern as fineli-ai)
 #
 # Canonical site URL (magic links, metadata). Must be non-empty — an empty AUTH_URL env var
@@ -35,8 +35,6 @@ services:
           property: connectionString
       - key: AUTH_SECRET
         generateValue: true
-      - key: CRON_SECRET
-        generateValue: true
       # Magic links: https://resend.com — HTTP API (no SMTP). See README.
       - key: RESEND_API_KEY
         sync: false
@@ -45,7 +43,6 @@ services:
       # Optional: MapTiler Outdoor basemap on /map (see README)
       - key: NEXT_PUBLIC_MAPTILER_API_KEY
         sync: false
-    # Optional: Cron Job POST /api/cron/sync with Authorization: Bearer CRON_SECRET
 
 databases:
   # Region is fixed when the instance is created. Renaming forces a new DB in Frankfurt if an

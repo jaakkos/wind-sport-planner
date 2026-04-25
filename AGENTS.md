@@ -38,7 +38,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - Copy **`.env.example`** → **`.env`** (and optionally **`.env.local`**). Never commit real secrets; keep them in env files or the host’s secret store.
 - **`AUTH_SECRET`**: long random string (see `.env.example`). **`AUTH_URL`**: canonical public URL with no trailing slash; wrong values break magic links and `new URL(...)` usage (see comments in `.env.example` and `src/auth.ts`).
 - **Email**: local dev uses **Mailpit** (Docker) via `EMAIL_SERVER_*` when **`RESEND_API_KEY`** is unset; production/Render uses **Resend** (`RESEND_API_KEY`, `RESEND_FROM`).
-- Optional: **`CRON_SECRET`** for `POST /api/cron/sync`, **`NEXT_PUBLIC_MAPTILER_API_KEY`** for MapTiler basemap, **`NEXT_PUBLIC_*`** legal contact vars on `/privacy`.
+- Optional: **`NEXT_PUBLIC_MAPTILER_API_KEY`** for MapTiler basemap, **`NEXT_PUBLIC_*`** legal contact vars on `/privacy`.
 
 ## Local services (Docker)
 
