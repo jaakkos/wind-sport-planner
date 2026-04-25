@@ -27,6 +27,7 @@ import {
 import { useForecastTime } from "@/components/map-hub/hooks/useForecastTime";
 import { useToolSections } from "@/components/map-hub/hooks/useToolSections";
 import { useFitMapToPracticeAreas } from "@/components/map-hub/hooks/useFitMapToPracticeAreas";
+import { useTerrainPopoverPosition } from "@/components/map-hub/hooks/useTerrainPopoverPosition";
 import { CollapsibleSection } from "@/components/map-hub/CollapsibleSection";
 import { HelpDisclosure, PersistedCollapsible } from "@/components/map-hub/MapHubDisclosures";
 import { ForecastTimeControl } from "@/components/map-hub/ForecastTimeControl";
@@ -66,7 +67,6 @@ import {
   floorToHourMs,
   rankColor,
   toDatetimeLocalInput,
-  terrainPopoverScreenPosition,
 } from "@/lib/map/mapHubHelpers";
 import {
   cardinalFromDeg,
@@ -138,11 +138,6 @@ export function MapHub() {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [terrainClick, setTerrainClick] = useState<ClickTerrain | null>(null);
-  /** Screen position for terrain card (anchored to map click, updates on pan/zoom). */
-  const [terrainPopoverPos, setTerrainPopoverPos] = useState<{
-    left: number;
-    top: number;
-  } | null>(null);
   const [mapMode, setMapMode] = useState<"browse" | "draw" | "pickWind">("browse");
   const [drawRing, setDrawRing] = useState<[number, number][]>([]);
   const [drawAreaName, setDrawAreaName] = useState("");
@@ -209,33 +204,10 @@ export function MapHub() {
     return ids;
   }, [mapMode, mapLayerToggles.forecastSampleDots]);
 
-  useEffect(() => {
-    if (!terrainClick) {
-      setTerrainPopoverPos(null);
-      return;
-    }
-    const map = mapRef.current?.getMap();
-    if (!map) return;
-    const { lng, lat } = terrainClick;
-    const sync = () => {
-      if (typeof window === "undefined") return;
-      const p = map.project([lng, lat]);
-      setTerrainPopoverPos(
-        terrainPopoverScreenPosition(p.x, p.y, window.innerWidth, window.innerHeight),
-      );
-    };
-    sync();
-    map.on("move", sync);
-    map.on("zoom", sync);
-    map.on("resize", sync);
-    window.addEventListener("resize", sync);
-    return () => {
-      map.off("move", sync);
-      map.off("zoom", sync);
-      map.off("resize", sync);
-      window.removeEventListener("resize", sync);
-    };
-  }, [terrainClick]);
+  const terrainPopoverPos = useTerrainPopoverPosition({
+    mapRef,
+    anchor: terrainClick ? { lat: terrainClick.lat, lng: terrainClick.lng } : null,
+  });
 
   /** Centre map on ranked area centroid and select it (outline + edit panel). */
   const focusRankedAreaOnMap = useCallback((r: RankedPracticeArea) => {
@@ -1746,12 +1718,6 @@ export function MapHub() {
             return;
           }
           const { lng, lat } = e.lngLat;
-          const pt = e.point;
-          if (typeof window !== "undefined") {
-            setTerrainPopoverPos(
-              terrainPopoverScreenPosition(pt.x, pt.y, window.innerWidth, window.innerHeight),
-            );
-          }
           setTerrainClick({ lat, lng, elevationM: null, loading: true });
           void fetch(`/api/elevation?lat=${lat}&lng=${lng}`)
             .then(async (r) => {
