@@ -6,26 +6,22 @@ import {
   parseJsonBody,
   requireUserSession,
 } from "@/lib/api/handler";
+import {
+  AREA_NAME_MAX,
+  normalizeWindFromDeg,
+  polygonSchema,
+  sportEnum,
+  windSectorsSchema,
+} from "@/lib/practiceArea/schema";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-const geoPolygon = z.object({
-  type: z.literal("Polygon"),
-  coordinates: z.array(z.array(z.tuple([z.number(), z.number()]))),
-});
-
-const AREA_NAME_MAX = 120;
-
-function normWindDeg(v: number): number {
-  return ((v % 360) + 360) % 360;
-}
-
 const postSchema = z.object({
-  geojson: geoPolygon,
-  sports: z.array(z.enum(["kiteski", "kitesurf"])).min(1),
+  geojson: polygonSchema,
+  sports: z.array(sportEnum).min(1),
   name: z.string().max(AREA_NAME_MAX).optional(),
   labelPreset: z.nativeEnum(AreaLabelPreset).optional(),
-  windSectors: z.array(z.tuple([z.number(), z.number()])).nullable().optional(),
+  windSectors: windSectorsSchema.optional(),
   optimalWindFromDeg: z.number().finite().optional(),
   isPublic: z.boolean().optional(),
 });
@@ -59,7 +55,9 @@ export async function POST(req: Request) {
       labelPreset: d.labelPreset ?? AreaLabelPreset.other,
       windSectors: d.windSectors ?? undefined,
       optimalWindFromDeg:
-        d.optimalWindFromDeg != null ? normWindDeg(d.optimalWindFromDeg) : undefined,
+        d.optimalWindFromDeg != null
+          ? normalizeWindFromDeg(d.optimalWindFromDeg)
+          : undefined,
       isPublic: d.isPublic === true,
     },
   });
