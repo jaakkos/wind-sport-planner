@@ -27,6 +27,10 @@ import { useMapLayerToggles } from "@/components/map-hub/hooks/useMapLayerToggle
 import { useMapBundle } from "@/components/map-hub/hooks/useMapBundle";
 import { useExperiences } from "@/components/map-hub/hooks/useExperiences";
 import { useForecastRanking } from "@/components/map-hub/hooks/useForecastRanking";
+import {
+  useRankingPreferences,
+  type MultiPointForecastFormState,
+} from "@/components/map-hub/hooks/useRankingPreferences";
 import { CollapsibleSection } from "@/components/map-hub/CollapsibleSection";
 import { HelpDisclosure, PersistedCollapsible } from "@/components/map-hub/MapHubDisclosures";
 import { ForecastTimeControl } from "@/components/map-hub/ForecastTimeControl";
@@ -89,55 +93,6 @@ import {
   windFieldSpatialProbePoints,
   WIND_MAP_ARROW_MAX_SAMPLES_SETTING,
 } from "@/lib/heuristics/windSamplePoints";
-
-type SportRankingFormState = {
-  minWindMs: number;
-  maxWindMs: number;
-  idealMinMs: number;
-  idealMaxMs: number;
-  windFitScale: number;
-  gustPenaltyScale: number;
-  directionEmphasis: number;
-};
-
-type MultiPointForecastFormState = {
-  mode: "off" | "auto" | "on";
-  maxSamples: number;
-  scoringPolicy: "representative" | "conservative";
-};
-
-type RankingPrefsApiResponse = {
-  doc: {
-    kiteski?: Partial<SportRankingFormState>;
-    kitesurf?: Partial<SportRankingFormState>;
-    multiPointForecast?: Partial<MultiPointForecastFormState>;
-  } | null;
-  defaults: Record<
-    "kiteski" | "kitesurf",
-    SportRankingFormState & {
-      bands: { minMs: number; maxMs: number; idealMin: number; idealMax: number };
-    }
-  >;
-  multiPointForecast: MultiPointForecastFormState;
-};
-
-function sportFormFromDefaults(
-  sport: "kiteski" | "kitesurf",
-  doc: RankingPrefsApiResponse["doc"],
-  defaults: RankingPrefsApiResponse["defaults"],
-): SportRankingFormState {
-  const d = defaults[sport];
-  const p = doc?.[sport];
-  return {
-    minWindMs: p?.minWindMs ?? d.minWindMs,
-    maxWindMs: p?.maxWindMs ?? d.maxWindMs,
-    idealMinMs: p?.idealMinMs ?? d.idealMinMs,
-    idealMaxMs: p?.idealMaxMs ?? d.idealMaxMs,
-    windFitScale: p?.windFitScale ?? d.windFitScale,
-    gustPenaltyScale: p?.gustPenaltyScale ?? d.gustPenaltyScale,
-    directionEmphasis: p?.directionEmphasis ?? d.directionEmphasis,
-  };
-}
 
 type ClickTerrain = {
   lat: number;
@@ -216,14 +171,22 @@ export function MapHub() {
     onError: setMsg,
   });
   /** Logged-in: editable wind bands & weights for forecast ranking (per sport). */
-  const [rankingForm, setRankingForm] = useState<{
-    kiteski: SportRankingFormState;
-    kitesurf: SportRankingFormState;
-  } | null>(null);
-  const [multiPointForm, setMultiPointForm] = useState<MultiPointForecastFormState | null>(
-    null,
-  );
-  const [rankingPrefsLoading, setRankingPrefsLoading] = useState(false);
+  const {
+    rankingForm,
+    multiPointForm,
+    loading: rankingPrefsLoading,
+    patchActiveSport: patchActiveSportRanking,
+    patchMultiPoint,
+    save: saveRankingPrefsForActiveSport,
+    reset: resetRankingPrefsForActiveSport,
+  } = useRankingPreferences({
+    activeSport,
+    enabled: isAuthed,
+    pending: sessionPending,
+    onSaved: loadRank,
+    onError: setMsg,
+    onClearError: () => setMsg(null),
+  });
   const [toolSectionsOpen, setToolSectionsOpen] =
     useState<Record<ToolSectionKey, boolean>>(DEFAULT_TOOL_SECTIONS);
 
@@ -320,126 +283,6 @@ export function MapHub() {
     }
     return buildRasterBasemapStyle(basemap, reliefOpacity);
   }, [basemap, reliefOpacity]);
-
-  const loadRankingPrefs = useCallback(async () => {
-    setRankingPrefsLoading(true);
-    try {
-      const r = await fetch("/api/user/ranking-preferences");
-      if (!r.ok) {
-        setRankingForm(null);
-        setMultiPointForm(null);
-        return;
-      }
-      const j = (await r.json()) as RankingPrefsApiResponse;
-      const dmp = j.doc?.multiPointForecast;
-      const defMp = j.multiPointForecast;
-      setRankingForm({
-        kiteski: sportFormFromDefaults("kiteski", j.doc, j.defaults),
-        kitesurf: sportFormFromDefaults("kitesurf", j.doc, j.defaults),
-      });
-      setMultiPointForm({
-        mode: dmp?.mode ?? defMp.mode,
-        maxSamples: dmp?.maxSamples ?? defMp.maxSamples,
-        scoringPolicy: dmp?.scoringPolicy ?? defMp.scoringPolicy,
-      });
-    } finally {
-      setRankingPrefsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (sessionPending) return;
-    if (!isAuthed) {
-      setRankingForm(null);
-      setMultiPointForm(null);
-      return;
-    }
-    void loadRankingPrefs();
-  }, [sessionPending, isAuthed, loadRankingPrefs]);
-
-  const patchActiveSportRanking = useCallback(
-    (patch: Partial<SportRankingFormState>) => {
-      setRankingForm((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          [activeSport]: { ...prev[activeSport], ...patch },
-        };
-      });
-    },
-    [activeSport],
-  );
-
-  const saveRankingPrefsForActiveSport = useCallback(async () => {
-    if (!rankingForm || !multiPointForm) return;
-    const s = activeSport;
-    const f = rankingForm[s];
-    const r = await fetch("/api/user/ranking-preferences", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        [s]: {
-          minWindMs: f.minWindMs,
-          maxWindMs: f.maxWindMs,
-          idealMinMs: f.idealMinMs,
-          idealMaxMs: f.idealMaxMs,
-          windFitScale: f.windFitScale,
-          gustPenaltyScale: f.gustPenaltyScale,
-          directionEmphasis: f.directionEmphasis,
-        },
-        multiPointForecast: {
-          mode: multiPointForm.mode,
-          maxSamples: multiPointForm.maxSamples,
-          scoringPolicy: multiPointForm.scoringPolicy,
-        },
-      }),
-    });
-    if (!r.ok) {
-      setMsg("Could not save scoring preferences.");
-      return;
-    }
-    setMsg(null);
-    const j = (await r.json()) as RankingPrefsApiResponse;
-    const dmp = j.doc?.multiPointForecast;
-    const defMp = j.multiPointForecast;
-    setRankingForm({
-      kiteski: sportFormFromDefaults("kiteski", j.doc, j.defaults),
-      kitesurf: sportFormFromDefaults("kitesurf", j.doc, j.defaults),
-    });
-    setMultiPointForm({
-      mode: dmp?.mode ?? defMp.mode,
-      maxSamples: dmp?.maxSamples ?? defMp.maxSamples,
-      scoringPolicy: dmp?.scoringPolicy ?? defMp.scoringPolicy,
-    });
-    await loadRank();
-  }, [rankingForm, multiPointForm, activeSport, loadRank]);
-
-  const resetRankingPrefsForActiveSport = useCallback(async () => {
-    const r = await fetch("/api/user/ranking-preferences", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ [activeSport]: null }),
-    });
-    if (!r.ok) {
-      setMsg("Could not reset scoring preferences.");
-      return;
-    }
-    setMsg(null);
-    const j = (await r.json()) as RankingPrefsApiResponse;
-    const dmp = j.doc?.multiPointForecast;
-    const defMp = j.multiPointForecast;
-    setRankingForm({
-      kiteski: sportFormFromDefaults("kiteski", j.doc, j.defaults),
-      kitesurf: sportFormFromDefaults("kitesurf", j.doc, j.defaults),
-    });
-    setMultiPointForm({
-      mode: dmp?.mode ?? defMp.mode,
-      maxSamples: dmp?.maxSamples ?? defMp.maxSamples,
-      scoringPolicy: dmp?.scoringPolicy ?? defMp.scoringPolicy,
-    });
-    await loadRank();
-  }, [activeSport, loadRank]);
-
 
   useEffect(() => {
     const fc = bundle?.practiceAreas;
@@ -1106,14 +949,9 @@ export function MapHub() {
                       <select
                         value={multiPointForm.mode}
                         onChange={(e) =>
-                          setMultiPointForm((p) =>
-                            p
-                              ? {
-                                  ...p,
-                                  mode: e.target.value as MultiPointForecastFormState["mode"],
-                                }
-                              : p,
-                          )
+                          patchMultiPoint({
+                            mode: e.target.value as MultiPointForecastFormState["mode"],
+                          })
                         }
                         className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-xs text-app-fg"
                       >
@@ -1133,9 +971,7 @@ export function MapHub() {
                         onChange={(e) => {
                           const v = Math.round(Number(e.target.value));
                           if (!Number.isFinite(v)) return;
-                          setMultiPointForm((p) =>
-                            p ? { ...p, maxSamples: Math.min(9, Math.max(3, v)) } : p,
-                          );
+                          patchMultiPoint({ maxSamples: Math.min(9, Math.max(3, v)) });
                         }}
                         className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-xs text-app-fg"
                       />
@@ -1145,15 +981,10 @@ export function MapHub() {
                       <select
                         value={multiPointForm.scoringPolicy}
                         onChange={(e) =>
-                          setMultiPointForm((p) =>
-                            p
-                              ? {
-                                  ...p,
-                                  scoringPolicy: e.target
-                                    .value as MultiPointForecastFormState["scoringPolicy"],
-                                }
-                              : p,
-                          )
+                          patchMultiPoint({
+                            scoringPolicy: e.target
+                              .value as MultiPointForecastFormState["scoringPolicy"],
+                          })
                         }
                         className="rounded-lg border border-app-border bg-app-surface px-2 py-1 text-xs text-app-fg"
                       >
