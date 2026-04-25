@@ -1,17 +1,14 @@
 import type { ForecastFetchOptions, WeatherProvider } from "@/lib/weather/types";
-import { fmiProviderStub } from "@/lib/weather/providers/fmi";
 import { metNoProvider } from "@/lib/weather/providers/metNo";
 import { openMeteoProvider } from "@/lib/weather/providers/openMeteo";
 
 /**
- * Ascending `priority` → try order. Intended: **Met.no (20) → FMI stub (35) → Open-Meteo (100)**.
- * Outside Met.no’s region, only FMI (if Finland) + Open-Meteo apply.
+ * Ascending `priority` → try order: **Met.no (20) → Open-Meteo (100)**.
+ * Outside Met.no's region only Open-Meteo applies.
  */
-const providers: WeatherProvider[] = [
-  fmiProviderStub,
-  metNoProvider,
-  openMeteoProvider,
-].sort((a, b) => a.priority - b.priority);
+const providers: WeatherProvider[] = [metNoProvider, openMeteoProvider].sort(
+  (a, b) => a.priority - b.priority,
+);
 
 export function providersForPoint(lat: number, lng: number, at: Date) {
   return providers.filter((p) => p.supports(lat, lng, at));

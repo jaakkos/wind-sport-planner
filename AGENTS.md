@@ -103,7 +103,7 @@ Imports use the **`@/*`** alias → `src/*` (see `tsconfig.json`).
 ## Maps and weather
 
 - Map UI: **MapLibre** / **react-map-gl**, heavy UI in **`src/components/`** (e.g. map hub). Styles/helpers in **`src/lib/map/`**.
-- Weather: **`src/lib/weather/`** (router, Open-Meteo, FMI stub). Keep provider boundaries clear when adding sources or debug flags.
+- Weather: **`src/lib/weather/`** (router, Met.no, Open-Meteo). Keep provider boundaries clear when adding sources or debug flags.
 
 ## Debugging production / Render deployments (use MCP)
 

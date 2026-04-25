@@ -36,7 +36,7 @@ export function metNoPreferredRegion(lat: number, lng: number): boolean {
 
 export const metNoProvider: WeatherProvider = {
   id: "met_no",
-  /** Lowest = tried first among forecast providers (before FMI stub and Open-Meteo). */
+  /** Lowest = tried first among forecast providers (before Open-Meteo). */
   priority: 20,
   supports(lat, lng) {
     return metNoPreferredRegion(lat, lng);

@@ -26,7 +26,7 @@ describe("fetchHistoricalWithRouter", () => {
     vi.unstubAllGlobals();
   });
 
-  it("falls through FMI stub and returns Open-Meteo snapshot", async () => {
+  it("falls through Met.no and returns Open-Meteo snapshot when Met.no parse fails", async () => {
     const r = await fetchHistoricalWithRouter(60.17, 24.94, new Date("2024-06-15T12:30:00Z"));
     expect(r).not.toBeNull();
     expect(r?.providerId).toBe("open_meteo");

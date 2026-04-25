@@ -4,7 +4,7 @@
 
 *(Do your own trademark search before a major launch — we only checked for obvious collisions.)*
 
-Next.js app for kite skiing and kite surfing: **magic-link email auth** (Auth.js), **PostgreSQL + PostGIS** (via Docker locally), **pluggable weather** (FMI stub → **Met.no / Yr** in Europe with **terrain elevation** → **Open-Meteo** fallback), **practice areas** you draw on a **MapLibre** map, **session experiences** you log (date, time, area, how it felt), **forecast timeline ranking** with a small boost when past “good” sessions match similar wind, and heuristic **session scoring**.
+Next.js app for kite skiing and kite surfing: **magic-link email auth** (Auth.js), **PostgreSQL + PostGIS** (via Docker locally), **pluggable weather** (**Met.no / Yr** in Europe with **terrain elevation** → **Open-Meteo** fallback), **practice areas** you draw on a **MapLibre** map, **session experiences** you log (date, time, area, how it felt), **forecast timeline ranking** with a small boost when past “good” sessions match similar wind, and heuristic **session scoring**.
 
 **Forecast routing:** For coordinates in a broad **European box** (about 43–83°N, 25°W–35°E), ranking uses [api.met.no](https://api.met.no/) Locationforecast with **ground elevation** from Open-Meteo’s elevation API so Met.no can correct for height above sea level. Outside that region, **Open-Meteo** is used first (including hourly **visibility**). Set `MET_NO_USER_AGENT` in production if you replace the default identifier — see [Met.no Terms of Service](https://api.met.no/doc/TermsOfService).
 
@@ -62,8 +62,8 @@ The **Forecast time** slider (hourly, up to five days ahead from a fixed “anch
 
 ## Weather providers
 
-- **`fmi_wfs`**: Finland bbox, stub (returns no data) — router falls through.
-- **`open_meteo`**: Global historical (archive API) and forecast (forecast API).
+- **`met_no`**: Locationforecast/2.0 across the European box (~43–83°N, 25°W–35°E). Uses `altitudeM` (Open-Meteo elevation) when available so terrain affects the response.
+- **`open_meteo`**: Global historical (archive API) and forecast (forecast API). The fallback when Met.no is out of region or returns nothing.
 
 ## Deploy on Render
 
@@ -99,7 +99,7 @@ The repo includes **three layers** so you can refactor dependencies and ship wit
 
 | Layer | Tool | What it covers |
 |--------|------|----------------|
-| **Unit** | [Vitest](https://vitest.dev/) | Pure logic: heuristics, Zod wind-log schema, FMI stub, weather router (with `fetch` mocked). |
+| **Unit** | [Vitest](https://vitest.dev/) | Pure logic: heuristics, weather router and providers (with `fetch` mocked). |
 | **Functional** | Vitest + `vi.mock` | Next **Route Handlers** with mocked `auth` and Prisma — no running DB required for these files. |
 | **End-to-end** | [Playwright](https://playwright.dev/) | Real browser against `next dev`: home page, login UI, `/map` redirect when logged out (needs `DATABASE_URL` + migrated DB for the map gate). |
 
@@ -144,4 +144,4 @@ To avoid **two deploys** per push, either connect GitHub to Render *or* use the 
 
 ## Licence
 
-Application code is licensed under the [MIT License](LICENSE) (see `LICENSE`). Respect [FMI open data](https://www.fmi.fi/en/open-data-manual) and [Open-Meteo](https://open-meteo.com/) terms for weather data use.
+Application code is licensed under the [MIT License](LICENSE) (see `LICENSE`). Respect [Met.no / Yr](https://api.met.no/doc/TermsOfService) and [Open-Meteo](https://open-meteo.com/) terms for weather data use.
