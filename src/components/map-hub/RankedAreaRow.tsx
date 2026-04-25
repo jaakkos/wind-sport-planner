@@ -1,7 +1,7 @@
 "use client";
 
 import type { RankedPracticeArea } from "@/lib/heuristics/rankAreaTypes";
-import { windCompactSummary, windMultiPointSubtitle } from "@/lib/map/mapHubHelpers";
+import { windCompactSummary, windMultiPointSubtitle } from "@/lib/map/windFormat";
 import { formatVisibilityM } from "@/lib/weather/formatVisibility";
 
 /**

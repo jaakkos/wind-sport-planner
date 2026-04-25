@@ -65,13 +65,15 @@ import {
 } from "@/lib/map/windFieldArrowIcon";
 import { clampArrowLengthInsidePolygon } from "@/lib/map/windArrowLength";
 import {
-  cardinalFromDeg,
   floorToHourMs,
   toDatetimeLocalInput,
   terrainPopoverScreenPosition,
+} from "@/lib/map/mapHubHelpers";
+import {
+  cardinalFromDeg,
   windCompactSummary,
   windMultiPointSubtitle,
-} from "@/lib/map/mapHubHelpers";
+} from "@/lib/map/windFormat";
 import {
   MAX_TOTAL_WIND_FIELD_MARKERS,
   WIND_FIELD_MAX_ARROWS,

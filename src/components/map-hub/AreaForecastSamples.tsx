@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FeatureCollection } from "geojson";
 import { formatVisibilityM } from "@/lib/weather/formatVisibility";
-import { windCompactSummary } from "@/lib/map/mapHubHelpers";
+import { windCompactSummary } from "@/lib/map/windFormat";
 import { yrNoHourlyTableUrlEn } from "@/lib/yrNoUrls";
 import { ExternalTabIcon } from "./ExternalTabIcon";
 
