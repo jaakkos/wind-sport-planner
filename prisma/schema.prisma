@@ -20,9 +20,7 @@ model User {
 
   accounts           Account[]
   sessions           Session[]
-  activities         Activity[]
   practiceAreas      PracticeArea[]
-  spots              Spot[]
   sessionExperiences SessionExperience[]
 }
 
@@ -68,82 +66,11 @@ enum Sport {
   kitesurf
 }
 
-enum SportSource {
-  strava
-  inferred
-  user_override
-}
-
-enum SessionOutcome {
-  would_not_repeat
-  marginal
-  good
-  excellent
-}
-
 enum SessionSuitability {
   unsuitable
   marginal
   suitable
   ideal
-}
-
-enum FeltWindStrength {
-  low
-  medium
-  high
-  very_high
-}
-
-enum FeltWindDirection {
-  N
-  NNE
-  NE
-  ENE
-  E
-  ESE
-  SE
-  SSE
-  S
-  SSW
-  SW
-  WSW
-  W
-  WNW
-  NW
-  NNW
-}
-
-enum Gustiness {
-  steady
-  moderate_gusts
-  strong_gusts
-}
-
-enum VisibilityCond {
-  poor
-  ok
-  good
-}
-
-enum SnowSurface {
-  hard_icy
-  packed
-  soft
-  variable
-}
-
-enum WaterConditions {
-  flat
-  chop
-  waves_small
-  waves_large
-}
-
-enum WaveHeightBand {
-  ankle
-  waist
-  overhead
 }
 
 enum AreaLabelPreset {
@@ -152,45 +79,6 @@ enum AreaLabelPreset {
   coast
   backup
   other
-}
-
-model Activity {
-  id                String   @id @default(cuid())
-  userId            String
-  stravaActivityId  String
-  name              String
-  stravaSportType   String
-  startDate         DateTime
-  endDate           DateTime?
-  distanceM         Float?
-  movingTimeSec     Int?
-  summaryPolyline   String?  @db.Text
-  mapPolyline       String?  @db.Text
-  startLat          Float?
-  startLng          Float?
-  rawStrava         Json?
-  lastSyncedAt      DateTime @default(now())
-
-  user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  override ActivityOverride?
-  weather  WeatherSnapshot[]
-  windLog  WindLog?
-
-  @@unique([userId, stravaActivityId])
-  @@index([userId, startDate])
-}
-
-model ActivityOverride {
-  id                    String      @id @default(cuid())
-  activityId            String      @unique
-  effectiveSport        Sport?
-  sportSource           SportSource @default(inferred)
-  userOverriddenSport   Boolean     @default(false)
-  hiddenFromMap         Boolean     @default(false)
-  linkedPracticeAreaId  String?
-
-  activity       Activity      @relation(fields: [activityId], references: [id], onDelete: Cascade)
-  practiceArea   PracticeArea? @relation(fields: [linkedPracticeAreaId], references: [id], onDelete: SetNull)
 }
 
 model PracticeArea {
@@ -211,8 +99,7 @@ model PracticeArea {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  overrides    ActivityOverride[]
-  experiences  SessionExperience[]
+  experiences SessionExperience[]
 
   @@index([userId])
 }
@@ -242,71 +129,4 @@ model SessionExperience {
 
   @@index([userId, practiceAreaId])
   @@index([userId, occurredAt])
-}
-
-model Spot {
-  id          String          @id @default(cuid())
-  userId      String
-  lat         Float
-  lng         Float
-  sports      Sport[]
-  labelPreset AreaLabelPreset @default(other)
-  windSectors Json?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-}
-
-model WeatherSnapshot {
-  id              String   @id @default(cuid())
-  activityId      String
-  providerId      String
-  fetchedAt       DateTime @default(now())
-  lat             Float
-  lng             Float
-  observedAt      DateTime
-  windSpeedMs     Float?
-  windDirDeg      Float?
-  gustMs          Float?
-  temperatureC    Float?
-  rawPayload      Json?
-
-  activity Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
-
-  @@index([activityId])
-}
-
-model WindLog {
-  id                 String              @id @default(cuid())
-  activityId         String              @unique
-  sport              Sport
-  sessionOutcome     SessionOutcome
-  sessionSuitability SessionSuitability
-  feltWindStrength   FeltWindStrength
-  feltWindDirection  FeltWindDirection
-  gustiness          Gustiness
-  visibility         VisibilityCond
-  hazardFlags        String[]            @default([])
-  snowSurface        SnowSurface?
-  waterConditions    WaterConditions?
-  waveHeightBand     WaveHeightBand?
-
-  activity Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
-}
-
-model ForecastCache {
-  id             String   @id @default(cuid())
-  providerId     String
-  cacheKey       String
-  practiceAreaId String?
-  lat            Float?
-  lng            Float?
-  windowStart    DateTime
-  windowEnd      DateTime
-  payload        Json
-  expiresAt      DateTime
-
-  @@unique([providerId, cacheKey])
-  @@index([expiresAt])
 }
