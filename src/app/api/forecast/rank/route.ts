@@ -1,7 +1,12 @@
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
-import type { Sport } from "@/generated/prisma/client";
 import { rankPracticeAreas } from "@/lib/heuristics/rankAreas";
+import { isErrorResponse } from "@/lib/api/handler";
+import {
+  parseAtParam,
+  parseOptimalWindHalfWidthDegParam,
+  parseSportParam,
+} from "@/lib/api/forecastQuery";
 import { NextResponse } from "next/server";
 
 export async function GET(req: Request) {
@@ -9,25 +14,15 @@ export async function GET(req: Request) {
   const uid = session?.user?.id ?? null;
 
   const url = new URL(req.url);
-  const sport = (url.searchParams.get("sport") ?? "kiteski") as Sport;
-  if (sport !== "kiteski" && sport !== "kitesurf") {
-    return NextResponse.json({ error: "Invalid sport" }, { status: 400 });
-  }
-  const atParam = url.searchParams.get("at");
-  const at = atParam ? new Date(atParam) : new Date();
-  if (Number.isNaN(at.getTime())) {
-    return NextResponse.json({ error: "Invalid at" }, { status: 400 });
-  }
-
-  let optimalMatchHalfWidthDeg = 30;
-  const hwParam = url.searchParams.get("optimalWindHalfWidthDeg");
-  if (hwParam != null && hwParam !== "") {
-    const h = Number(hwParam);
-    if (!Number.isFinite(h)) {
-      return NextResponse.json({ error: "Invalid optimalWindHalfWidthDeg" }, { status: 400 });
-    }
-    optimalMatchHalfWidthDeg = Math.min(90, Math.max(5, h));
-  }
+  const sportRes = parseSportParam(url.searchParams);
+  if (isErrorResponse(sportRes)) return sportRes;
+  const { sport } = sportRes;
+  const atRes = parseAtParam(url.searchParams);
+  if (isErrorResponse(atRes)) return atRes;
+  const { at } = atRes;
+  const halfWRes = parseOptimalWindHalfWidthDegParam(url.searchParams);
+  if (isErrorResponse(halfWRes)) return halfWRes;
+  const { optimalMatchHalfWidthDeg } = halfWRes;
 
   const areas = await prisma.practiceArea.findMany({
     where:

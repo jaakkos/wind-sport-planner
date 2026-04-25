@@ -1,7 +1,8 @@
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
-import type { Sport } from "@/generated/prisma/client";
 import type { Feature, FeatureCollection, Polygon } from "geojson";
+import { isErrorResponse } from "@/lib/api/handler";
+import { parseSportParam } from "@/lib/api/forecastQuery";
 import { NextResponse } from "next/server";
 
 export async function GET(req: Request) {
@@ -9,10 +10,9 @@ export async function GET(req: Request) {
   const uid = session?.user?.id ?? null;
 
   const url = new URL(req.url);
-  const activeSport = (url.searchParams.get("activeSport") ?? "kiteski") as Sport;
-  if (activeSport !== "kiteski" && activeSport !== "kitesurf") {
-    return NextResponse.json({ error: "Invalid activeSport" }, { status: 400 });
-  }
+  const sportRes = parseSportParam(url.searchParams, "activeSport");
+  if (isErrorResponse(sportRes)) return sportRes;
+  const { sport: activeSport } = sportRes;
 
   const areas = await prisma.practiceArea.findMany({
     where:
