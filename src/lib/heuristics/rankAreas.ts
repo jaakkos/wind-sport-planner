@@ -20,7 +20,10 @@ import { resolvePracticeAreaWindSampleLocations } from "@/lib/heuristics/practic
 import { createElevationCache } from "@/lib/heuristics/windSamplePoints";
 import { directionRankFactor } from "@/lib/heuristics/windDirection";
 import { parseRankingPreferencesDoc } from "@/lib/heuristics/rankingPreferences";
-import { resolveMultiPointForecastPrefs } from "@/lib/heuristics/ranking/multiPointPrefs";
+import {
+  resolveMultiPointForecastPrefs,
+  type MultiPointScoringPolicy,
+} from "@/lib/heuristics/ranking/multiPointPrefs";
 import {
   resolveSportRankingOptions,
   type ResolvedSportRankingOptions,
@@ -157,6 +160,99 @@ async function fetchForecastSamplesAtHour(args: {
   return { samples, providerId };
 }
 
+type DirectionScoringArgs = {
+  areaWindSectorsJson: unknown;
+  areaOptimalWindFromDeg: number | null;
+  optimalMatchHalfWidthDeg: number;
+};
+
+type AreaWindBuildResult = {
+  best: NormalizedWind;
+  wind: RankedPracticeAreaWind;
+  fitSpeedMs: number | null;
+  gustForPenaltyMs: number | null;
+  refSpeedForGustMs: number | null;
+  dirFactor: number;
+  /** Multi-point summary copied into the rank breakdown when sampling >1 spot. */
+  multiPointSummary?: ReturnType<typeof aggregateMultiPointWinds> extends infer A
+    ? A extends { summary: infer S }
+      ? S
+      : never
+    : never;
+};
+
+/**
+ * Collapses the per-spot forecast samples into a single wind shape used for
+ * scoring + display. Returns null when multi-point aggregation cannot produce
+ * a representative result (caller treats that as "no usable forecast").
+ */
+function buildAreaWind(args: {
+  samples: NormalizedWind[];
+  dirArgs: DirectionScoringArgs;
+  scoringPolicy: MultiPointScoringPolicy;
+}): AreaWindBuildResult | null {
+  const { samples, dirArgs, scoringPolicy } = args;
+  if (samples.length === 0) return null;
+
+  if (samples.length === 1) {
+    const best = samples[0]!;
+    return {
+      best,
+      wind: {
+        speedMs: best.windSpeedMs,
+        gustMs: best.gustMs,
+        dirFromDeg: best.windDirDeg,
+        visibilityM: best.visibilityM,
+        observedAt: best.observedAt.toISOString(),
+      },
+      fitSpeedMs: best.windSpeedMs,
+      gustForPenaltyMs: best.gustMs,
+      refSpeedForGustMs: best.windSpeedMs,
+      dirFactor: directionRankFactor({
+        ...dirArgs,
+        forecastWindFromDeg: best.windDirDeg ?? null,
+      }),
+    };
+  }
+
+  const agg = aggregateMultiPointWinds(samples, scoringPolicy);
+  if (!agg) return null;
+  const best = agg.display;
+  const factors = samples.map((s) =>
+    directionRankFactor({
+      ...dirArgs,
+      forecastWindFromDeg: s.windDirDeg ?? null,
+    }),
+  );
+  const factorMean = directionRankFactor({
+    ...dirArgs,
+    forecastWindFromDeg: best.windDirDeg ?? null,
+  });
+  return {
+    best,
+    wind: {
+      speedMs: best.windSpeedMs,
+      gustMs: best.gustMs,
+      dirFromDeg: best.windDirDeg,
+      visibilityM: best.visibilityM,
+      observedAt: best.observedAt.toISOString(),
+      multiPoint: {
+        samples: agg.summary.samples,
+        speedMinMs: agg.summary.speedMinMs,
+        speedMaxMs: agg.summary.speedMaxMs,
+        speedMedianMs: agg.summary.speedMedianMs,
+        gustMaxMs: agg.summary.gustMaxMs,
+        dirSpreadDeg: agg.summary.dirSpreadDeg,
+      },
+    },
+    fitSpeedMs: agg.fitSpeedMs,
+    gustForPenaltyMs: agg.gustPenaltyGustMs,
+    refSpeedForGustMs: agg.gustPenaltyRefSpeedMs,
+    dirFactor: multiPointDirectionMultiplier(scoringPolicy, factors, factorMean),
+    multiPointSummary: agg.summary,
+  };
+}
+
 export async function rankPracticeAreas(args: {
   /** When null (anonymous), experience-based boost is skipped. */
   userId: string | null;
@@ -246,86 +342,31 @@ export async function rankPracticeAreas(args: {
       continue;
     }
 
-    const dirArgs = {
-      areaWindSectorsJson: area.windSectors,
-      areaOptimalWindFromDeg: area.optimalWindFromDeg,
-      optimalMatchHalfWidthDeg: halfW,
-    };
-
-    let best: NormalizedWind;
-    let fitSpeedMs: number | null;
-    let gustForPenaltyMs: number | null;
-    let refSpeedForGustMs: number | null;
-    let dirFactor: number;
-    let wind: RankedPracticeAreaWind;
-
-    if (samplesAtHour.length === 1) {
-      best = samplesAtHour[0]!;
-      fitSpeedMs = best.windSpeedMs;
-      gustForPenaltyMs = best.gustMs;
-      refSpeedForGustMs = best.windSpeedMs;
-      dirFactor = directionRankFactor({
-        ...dirArgs,
-        forecastWindFromDeg: best.windDirDeg ?? null,
+    const built = buildAreaWind({
+      samples: samplesAtHour,
+      dirArgs: {
+        areaWindSectorsJson: area.windSectors,
+        areaOptimalWindFromDeg: area.optimalWindFromDeg,
+        optimalMatchHalfWidthDeg: halfW,
+      },
+      scoringPolicy: mpPrefs.scoringPolicy,
+    });
+    if (!built) {
+      results.push({
+        areaId: area.id,
+        name: area.name,
+        score: 0,
+        centroid: { lat: c.lat, lng: c.lng },
+        wind: null,
+        breakdown: { ...breakdown, reason: "aggregate_failed" },
       });
-      wind = {
-        speedMs: best.windSpeedMs,
-        gustMs: best.gustMs,
-        dirFromDeg: best.windDirDeg,
-        visibilityM: best.visibilityM,
-        observedAt: best.observedAt.toISOString(),
-      };
-    } else {
-      const agg = aggregateMultiPointWinds(samplesAtHour, mpPrefs.scoringPolicy);
-      if (!agg) {
-        results.push({
-          areaId: area.id,
-          name: area.name,
-          score: 0,
-          centroid: { lat: c.lat, lng: c.lng },
-          wind: null,
-          breakdown: { ...breakdown, reason: "aggregate_failed" },
-        });
-        continue;
-      }
-      best = agg.display;
-      fitSpeedMs = agg.fitSpeedMs;
-      gustForPenaltyMs = agg.gustPenaltyGustMs;
-      refSpeedForGustMs = agg.gustPenaltyRefSpeedMs;
-      const factors = samplesAtHour.map((s) =>
-        directionRankFactor({
-          ...dirArgs,
-          forecastWindFromDeg: s.windDirDeg ?? null,
-        }),
-      );
-      const meanDir = best.windDirDeg ?? null;
-      const factorMean = directionRankFactor({
-        ...dirArgs,
-        forecastWindFromDeg: meanDir,
-      });
-      dirFactor = multiPointDirectionMultiplier(
-        mpPrefs.scoringPolicy,
-        factors,
-        factorMean,
-      );
-      wind = {
-        speedMs: best.windSpeedMs,
-        gustMs: best.gustMs,
-        dirFromDeg: best.windDirDeg,
-        visibilityM: best.visibilityM,
-        observedAt: best.observedAt.toISOString(),
-        multiPoint: {
-          samples: agg.summary.samples,
-          speedMinMs: agg.summary.speedMinMs,
-          speedMaxMs: agg.summary.speedMaxMs,
-          speedMedianMs: agg.summary.speedMedianMs,
-          gustMaxMs: agg.summary.gustMaxMs,
-          dirSpreadDeg: agg.summary.dirSpreadDeg,
-        },
-      };
-      breakdown.multiPointSummary = agg.summary;
+      continue;
     }
 
+    const { best, wind, fitSpeedMs, gustForPenaltyMs, refSpeedForGustMs, dirFactor } = built;
+    if (built.multiPointSummary) {
+      breakdown.multiPointSummary = built.multiPointSummary;
+    }
     breakdown.windSpeedMs = best.windSpeedMs;
     breakdown.windDirDeg = best.windDirDeg;
     breakdown.visibilityM = best.visibilityM;
