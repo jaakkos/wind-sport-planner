@@ -413,6 +413,7 @@ export function MapHub() {
           areaWindPickActive={
             mapMode === "pickWind" && windPickAreaId === selectedPracticeAreaId
           }
+          windPickStep={windPickStart == null ? "tail" : "head"}
           onDrawAreaOptimalWind={() => beginPickWindForArea(selectedPracticeAreaId)}
           onCancelWindPick={() => cancelPickWind()}
           onClose={() => {

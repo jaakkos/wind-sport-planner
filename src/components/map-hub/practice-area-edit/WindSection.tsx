@@ -8,6 +8,7 @@ import {
   hubMeta,
   hubSectionTitle,
 } from "@/components/map-hub/hubUi";
+import { PickWindInstructions } from "@/components/map-hub/PickWindInstructions";
 
 /**
  * Wind direction & sector controls for the area edit panel. Combines the
@@ -16,6 +17,7 @@ import {
  */
 export function WindSection({
   areaWindPickActive,
+  windPickStep,
   onDrawAreaOptimalWind,
   onCancelWindPick,
   optimalFromInput,
@@ -30,6 +32,7 @@ export function WindSection({
   onStartBoundaryEdit,
 }: {
   areaWindPickActive: boolean;
+  windPickStep: "tail" | "head";
   onDrawAreaOptimalWind: () => void;
   onCancelWindPick: () => void;
   optimalFromInput: string;
@@ -51,21 +54,8 @@ export function WindSection({
         the sidebar &quot;Saved-area sector half-width&quot;.
       </p>
       {areaWindPickActive ? (
-        <div className="mt-2 space-y-2 rounded-xl border border-app-border bg-app-accent-soft p-2">
-          <p className="text-[11px] leading-snug text-app-accent-hover">
-            <strong>1.</strong> Click the <strong>tail</strong> on the map.{" "}
-            <strong>2.</strong> Click the <strong>head</strong> (downwind). Saves automatically.
-          </p>
-          <button
-            type="button"
-            className={`w-full ${hubBtnSecondary}`}
-            onClick={onCancelWindPick}
-          >
-            Cancel drawing
-          </button>
-          <p className="text-[10px] text-app-fg-muted">
-            <kbd className="rounded bg-app-accent-muted px-0.5">Esc</kbd> · right-click resets tail
-          </p>
+        <div className="mt-2">
+          <PickWindInstructions step={windPickStep} onCancel={onCancelWindPick} />
         </div>
       ) : (
         <button

@@ -27,6 +27,7 @@ export function PracticeAreaEditPanel({
   optimalWindHalfWidthDeg,
   onForecastSamplesMapChange,
   areaWindPickActive,
+  windPickStep,
   onDrawAreaOptimalWind,
   onCancelWindPick,
   onClose,
@@ -41,6 +42,7 @@ export function PracticeAreaEditPanel({
   optimalWindHalfWidthDeg: number;
   onForecastSamplesMapChange: (fc: FeatureCollection | null) => void;
   areaWindPickActive: boolean;
+  windPickStep: "tail" | "head";
   onDrawAreaOptimalWind: () => void;
   onCancelWindPick: () => void;
   onClose: () => void;
@@ -272,6 +274,7 @@ export function PracticeAreaEditPanel({
 
           <WindSection
             areaWindPickActive={areaWindPickActive}
+            windPickStep={windPickStep}
             onDrawAreaOptimalWind={onDrawAreaOptimalWind}
             onCancelWindPick={onCancelWindPick}
             optimalFromInput={optimalFromInput}

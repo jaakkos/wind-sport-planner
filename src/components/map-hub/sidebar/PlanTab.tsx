@@ -5,6 +5,7 @@ import Link from "next/link";
 import { CollapsibleSection } from "@/components/map-hub/CollapsibleSection";
 import { ForecastTimeControl } from "@/components/map-hub/ForecastTimeControl";
 import { HelpDisclosure, PersistedCollapsible } from "@/components/map-hub/MapHubDisclosures";
+import { PickWindInstructions } from "@/components/map-hub/PickWindInstructions";
 import { RankedAreaRow } from "@/components/map-hub/RankedAreaRow";
 import { RankedListSkeleton, ScoringPrefsSkeleton } from "@/components/map-hub/hubSkeleton";
 import { hubBtnPrimary, hubBtnSecondary } from "@/components/map-hub/hubUi";
@@ -477,35 +478,10 @@ function WindRankSection({
     >
       <div className="flex flex-col gap-2">
         {mapMode === "pickWind" ? (
-          <div className="space-y-2 rounded-2xl border border-app-border bg-gradient-to-b from-app-accent-soft to-app-surface p-3 shadow-inner shadow-app-fg/5">
-            <p className="text-[10px] font-medium text-app-accent-hover">
-              Saving to the open practice area — see the edit panel for tips.
-            </p>
-            <p className="text-[11px] leading-snug text-app-fg">
-              {windPickStart == null ? (
-                <>
-                  <strong>1.</strong> Click the <strong>tail</strong> of the arrow (upwind / where wind
-                  comes toward you).
-                </>
-              ) : (
-                <>
-                  <strong>2.</strong> Click the <strong>head</strong> — arrow points where the wind{" "}
-                  <strong>blows</strong> (downwind).
-                </>
-              )}
-            </p>
-            <button
-              type="button"
-              className={`w-full ${hubBtnSecondary}`}
-              onClick={() => cancelPickWind()}
-            >
-              Cancel drawing
-            </button>
-            <p className="text-[10px] text-app-fg-muted">
-              <kbd className="rounded-md bg-app-accent-muted px-1 py-0.5">Esc</kbd> cancel · right-click
-              resets tail
-            </p>
-          </div>
+          <PickWindInstructions
+            step={windPickStart == null ? "tail" : "head"}
+            onCancel={() => cancelPickWind()}
+          />
         ) : null}
       </div>
       <label className="mt-2 flex flex-col gap-1">
