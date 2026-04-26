@@ -7,6 +7,8 @@ import {
   multiPointDirectionMultiplier,
   MULTI_POINT_DIAMETER_KM_TRIGGER,
   MULTI_POINT_ELEV_RANGE_M_TRIGGER,
+  pickHourClosestTo,
+  polygonBboxDiagonalKm,
 } from "@/lib/heuristics/multiPointForecast";
 import { resolveMultiPointForecastPrefs } from "@/lib/heuristics/ranking/multiPointPrefs";
 import type { NormalizedWind } from "@/lib/weather/types";
@@ -134,6 +136,84 @@ describe("multiPointDirectionMultiplier", () => {
 
   it("uses mean factor when representative", () => {
     expect(multiPointDirectionMultiplier("representative", [0.5, 1], 0.9)).toBe(0.9);
+  });
+});
+
+describe("polygonBboxDiagonalKm", () => {
+  it("returns 0 for a degenerate polygon", () => {
+    expect(
+      polygonBboxDiagonalKm({
+        type: "Polygon",
+        coordinates: [
+          [
+            [10, 60],
+            [10, 60],
+            [10, 60],
+            [10, 60],
+          ],
+        ],
+      }),
+    ).toBe(0);
+  });
+
+  it("returns the bbox-diagonal great-circle distance", () => {
+    const km = polygonBboxDiagonalKm({
+      type: "Polygon",
+      coordinates: [
+        [
+          [10, 60],
+          [10.1, 60],
+          [10.1, 60.05],
+          [10, 60.05],
+          [10, 60],
+        ],
+      ],
+    });
+    expect(km).toBeGreaterThan(5);
+    expect(km).toBeLessThan(15);
+  });
+});
+
+describe("pickHourClosestTo", () => {
+  function hour(iso: string, isObservation = false): NormalizedWind {
+    return {
+      windSpeedMs: 5,
+      gustMs: null,
+      windDirDeg: null,
+      temperatureC: null,
+      visibilityM: null,
+      observedAt: new Date(iso),
+      isObservation,
+    } as NormalizedWind;
+  }
+
+  it("returns null for an empty list", () => {
+    expect(pickHourClosestTo([], Date.now())).toBeNull();
+  });
+
+  it("picks the row with the smallest absolute time diff", () => {
+    const target = new Date("2026-01-01T12:00:00Z").getTime();
+    const result = pickHourClosestTo(
+      [
+        hour("2026-01-01T10:00:00Z"),
+        hour("2026-01-01T13:00:00Z"),
+        hour("2026-01-01T11:30:00Z"),
+      ],
+      target,
+    );
+    expect(result?.observedAt.toISOString()).toBe("2026-01-01T11:30:00.000Z");
+  });
+
+  it("prefers observations when two rows are equidistant", () => {
+    const target = new Date("2026-01-01T12:00:00Z").getTime();
+    const result = pickHourClosestTo(
+      [
+        hour("2026-01-01T11:00:00Z", false),
+        hour("2026-01-01T13:00:00Z", true),
+      ],
+      target,
+    );
+    expect(result?.isObservation).toBe(true);
   });
 });
 
