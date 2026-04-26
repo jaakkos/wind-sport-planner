@@ -90,6 +90,10 @@ import {
   patchPracticeArea,
 } from "@/lib/practiceArea/client";
 import {
+  createExperience,
+  deleteExperience,
+} from "@/lib/experiences/client";
+import {
   windFieldSpatialProbePoints,
   WIND_MAP_ARROW_MAX_SAMPLES_SETTING,
 } from "@/lib/heuristics/windSamplePoints";
@@ -1359,18 +1363,12 @@ export function MapHub() {
               setMsg(null);
               void (async () => {
                 try {
-                  const r = await fetch("/api/experiences", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      practiceAreaId,
-                      sport: activeSport,
-                      occurredAt: at.toISOString(),
-                      sessionSuitability,
-                    }),
+                  await createExperience({
+                    practiceAreaId,
+                    sport: activeSport,
+                    occurredAt: at.toISOString(),
+                    sessionSuitability,
                   });
-                  const j = (await r.json()) as { error?: string };
-                  if (!r.ok) throw new Error(j.error ?? "Save failed");
                   await loadExperiences();
                   await loadRank();
                   setMsg("Experience saved.");
@@ -1469,8 +1467,7 @@ export function MapHub() {
                       setLoading(true);
                       void (async () => {
                         try {
-                          const r = await fetch(`/api/experiences/${ex.id}`, { method: "DELETE" });
-                          if (!r.ok) throw new Error("Delete failed");
+                          await deleteExperience(ex.id);
                           await loadExperiences();
                           await loadRank();
                           setMsg("Experience removed.");
