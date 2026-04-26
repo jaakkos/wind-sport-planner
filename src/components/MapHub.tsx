@@ -1,14 +1,10 @@
 "use client";
 
-import "maplibre-gl/dist/maplibre-gl.css";
 import Image from "next/image";
 import Link from "next/link";
 import { signOut, useSession } from "next-auth/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import MapGL, {
-  MapRef,
-  NavigationControl,
-} from "react-map-gl/maplibre";
+import type { MapRef } from "react-map-gl/maplibre";
 import type { FeatureCollection } from "geojson";
 import { type SidebarTab } from "@/components/map-hub/constants";
 import { useSidebarTab } from "@/components/map-hub/hooks/useSidebarTab";
@@ -35,8 +31,7 @@ import { RankedAreaRow } from "@/components/map-hub/RankedAreaRow";
 import { RankedListSkeleton, ScoringPrefsSkeleton } from "@/components/map-hub/hubSkeleton";
 import { hubOverlayZ } from "@/components/map-hub/mapHubOverlayZ";
 import { PracticeAreaEditPanel } from "@/components/map-hub/PracticeAreaEditPanel";
-import { MapHubMarkers } from "@/components/map-hub/map/MapHubMarkers";
-import { MapHubLayers } from "@/components/map-hub/map/MapHubLayers";
+import { MapCanvas } from "@/components/map-hub/map/MapCanvas";
 import {
   hubBtnPrimary,
   hubBtnSecondary,
@@ -436,6 +431,136 @@ export function MapHub() {
           : "multi-spot on";
     return `${w.minWindMs}–${w.maxWindMs} m/s · ${modeLabel}`;
   }, [rankingForm, multiPointForm, activeSport]);
+
+  const handleMapLoad = useCallback<
+    React.ComponentProps<typeof MapCanvas>["onMapLoad"]
+  >((e) => {
+    const map = e.target;
+    setMapEpoch((n) => n + 1);
+    const z = map.getZoom();
+    if (typeof z === "number" && Number.isFinite(z)) setMapZoom(z);
+    const syncWindFieldArrow = () => ensureWindFieldArrowImage(map);
+    syncWindFieldArrow();
+    map.on("style.load", syncWindFieldArrow);
+  }, []);
+
+  const handleMapStyleData = useCallback(() => {
+    const map = mapRef.current?.getMap();
+    if (map?.isStyleLoaded()) ensureWindFieldArrowImage(map);
+  }, []);
+
+  const handleMapMouseMove = useCallback<
+    React.ComponentProps<typeof MapCanvas>["onMouseMove"]
+  >(
+    (e) => {
+      if (mapMode !== "pickWind" || windPickStart == null) return;
+      const { lng, lat } = e.lngLat;
+      setWindPickHover([lng, lat]);
+    },
+    [mapMode, windPickStart],
+  );
+
+  const handleMapContextMenu = useCallback<
+    React.ComponentProps<typeof MapCanvas>["onContextMenu"]
+  >(
+    (e) => {
+      if (mapMode === "draw") {
+        e.preventDefault();
+        setDrawRing((r) => r.slice(0, -1));
+        return;
+      }
+      if (mapMode === "pickWind") {
+        e.preventDefault();
+        setWindPickStart(null);
+        setWindPickHover(null);
+      }
+    },
+    [mapMode],
+  );
+
+  const handleMapClick = useCallback<
+    React.ComponentProps<typeof MapCanvas>["onClick"]
+  >(
+    (e) => {
+      if (mapMode === "pickWind") {
+        const { lng, lat } = e.lngLat;
+        if (windPickStart == null) {
+          setWindPickStart([lng, lat]);
+          setWindPickHover([lng, lat]);
+          setMsg("Click where the wind blows (arrow head). Right-click = reset tail.");
+          return;
+        }
+        const [sx, sy] = windPickStart;
+        const distKm = haversineKm(sx, sy, lng, lat);
+        if (distKm < 0.003) {
+          setMsg("Move farther and click again to set direction.");
+          return;
+        }
+        const from = windFromFromDownwindArrow(sx, sy, lng, lat);
+        const aid = windPickAreaId;
+        setWindPickStart(null);
+        setWindPickHover(null);
+        setWindPickAreaId(null);
+        setMapMode("browse");
+        if (!aid) {
+          setMsg("Wind draw had no target area — open Edit area and try again.");
+          return;
+        }
+        setLoading(true);
+        void (async () => {
+          try {
+            await patchPracticeArea(aid, { optimalWindFromDeg: from });
+            await loadBundle();
+            await loadRank();
+            setMsg(
+              `Saved area optimal: ${cardinalFromDeg(from)} (${Math.round(from)}°) wind from.`,
+            );
+          } catch (err) {
+            setMsg(err instanceof Error ? err.message : "Could not save area optimal.");
+          } finally {
+            setLoading(false);
+          }
+        })();
+        return;
+      }
+      if (mapMode === "draw") {
+        const { lng, lat } = e.lngLat;
+        setDrawRing((r) => [...r, [lng, lat]]);
+        return;
+      }
+      const hits = e.features ?? [];
+      const yrHit = hits.find(
+        (h) =>
+          h.layer?.id === "yr-forecast-point" ||
+          h.layer?.id === "yr-forecast-point-halo",
+      );
+      if (yrHit?.geometry?.type === "Point") {
+        const c = yrHit.geometry.coordinates;
+        const lng = c[0]!;
+        const lat = c[1]!;
+        window.open(yrNoHourlyTableUrlEn(lat, lng), "_blank", "noopener,noreferrer");
+        return;
+      }
+      const areaHit = hits.find((h) => h.layer?.id === "areas-fill");
+      if (
+        !e.originalEvent.shiftKey &&
+        areaHit?.properties &&
+        typeof (areaHit.properties as { id?: string }).id === "string"
+      ) {
+        setSelectedPracticeAreaId(String((areaHit.properties as { id: string }).id));
+        clearTerrain();
+        return;
+      }
+      if (e.originalEvent.shiftKey) {
+        const { lng, lat } = e.lngLat;
+        window.open(yrNoHourlyTableUrlEn(lat, lng), "_blank", "noopener,noreferrer");
+        return;
+      }
+      const { lng, lat } = e.lngLat;
+      probeTerrain(lat, lng);
+    },
+    [mapMode, windPickStart, windPickAreaId, loadBundle, loadRank, clearTerrain, probeTerrain],
+  );
 
   return (
     <div className="relative h-screen w-full">
@@ -1367,154 +1492,30 @@ export function MapHub() {
         />
       ) : null}
 
-      <MapGL
-        ref={mapRef}
-        initialViewState={{
-          longitude: 25,
-          latitude: 65,
-          zoom: 5,
-        }}
+      <MapCanvas
+        mapRef={mapRef}
         mapStyle={mapStyle}
-        style={{
-          position: "relative",
-          zIndex: 0,
-          width: "100%",
-          height: "100%",
-          cursor: mapMode === "draw" || mapMode === "pickWind" ? "crosshair" : undefined,
-        }}
-        maxZoom={19}
-        minZoom={1}
-        interactiveLayerIds={browseInteractiveLayerIds}
-        onLoad={(e) => {
-          const map = e.target;
-          setMapEpoch((n) => n + 1);
-          const z = map.getZoom();
-          if (typeof z === "number" && Number.isFinite(z)) setMapZoom(z);
-          const syncWindFieldArrow = () => ensureWindFieldArrowImage(map);
-          syncWindFieldArrow();
-          map.on("style.load", syncWindFieldArrow);
-        }}
-        onStyleData={() => {
-          const map = mapRef.current?.getMap();
-          if (map?.isStyleLoaded()) ensureWindFieldArrowImage(map);
-        }}
-        onMove={(e) => {
-          setMapZoom(e.viewState.zoom);
-        }}
-        onMouseMove={(e) => {
-          if (mapMode !== "pickWind" || windPickStart == null) return;
-          const { lng, lat } = e.lngLat;
-          setWindPickHover([lng, lat]);
-        }}
-        onContextMenu={(e) => {
-          if (mapMode === "draw") {
-            e.preventDefault();
-            setDrawRing((r) => r.slice(0, -1));
-            return;
-          }
-          if (mapMode === "pickWind") {
-            e.preventDefault();
-            setWindPickStart(null);
-            setWindPickHover(null);
-          }
-        }}
-        onClick={(e) => {
-          if (mapMode === "pickWind") {
-            const { lng, lat } = e.lngLat;
-            if (windPickStart == null) {
-              setWindPickStart([lng, lat]);
-              setWindPickHover([lng, lat]);
-              setMsg("Click where the wind blows (arrow head). Right-click = reset tail.");
-              return;
-            }
-            const [sx, sy] = windPickStart;
-            const distKm = haversineKm(sx, sy, lng, lat);
-            if (distKm < 0.003) {
-              setMsg("Move farther and click again to set direction.");
-              return;
-            }
-            const from = windFromFromDownwindArrow(sx, sy, lng, lat);
-            const aid = windPickAreaId;
-            setWindPickStart(null);
-            setWindPickHover(null);
-            setWindPickAreaId(null);
-            setMapMode("browse");
-            if (!aid) {
-              setMsg("Wind draw had no target area — open Edit area and try again.");
-              return;
-            }
-            setLoading(true);
-            void (async () => {
-              try {
-                await patchPracticeArea(aid, { optimalWindFromDeg: from });
-                await loadBundle();
-                await loadRank();
-                setMsg(
-                  `Saved area optimal: ${cardinalFromDeg(from)} (${Math.round(from)}°) wind from.`,
-                );
-              } catch (e) {
-                setMsg(e instanceof Error ? e.message : "Could not save area optimal.");
-              } finally {
-                setLoading(false);
-              }
-            })();
-            return;
-          }
-          if (mapMode === "draw") {
-            const { lng, lat } = e.lngLat;
-            setDrawRing((r) => [...r, [lng, lat]]);
-            return;
-          }
-          const hits = e.features ?? [];
-          const yrHit = hits.find(
-            (h) =>
-              h.layer?.id === "yr-forecast-point" ||
-              h.layer?.id === "yr-forecast-point-halo",
-          );
-          if (yrHit?.geometry?.type === "Point") {
-            const c = yrHit.geometry.coordinates;
-            const lng = c[0]!;
-            const lat = c[1]!;
-            window.open(yrNoHourlyTableUrlEn(lat, lng), "_blank", "noopener,noreferrer");
-            return;
-          }
-          const areaHit = hits.find((h) => h.layer?.id === "areas-fill");
-          if (
-            !e.originalEvent.shiftKey &&
-            areaHit?.properties &&
-            typeof (areaHit.properties as { id?: string }).id === "string"
-          ) {
-            setSelectedPracticeAreaId(String((areaHit.properties as { id: string }).id));
-            clearTerrain();
-            return;
-          }
-          if (e.originalEvent.shiftKey) {
-            const { lng, lat } = e.lngLat;
-            window.open(yrNoHourlyTableUrlEn(lat, lng), "_blank", "noopener,noreferrer");
-            return;
-          }
-          const { lng, lat } = e.lngLat;
-          probeTerrain(lat, lng);
-        }}
-      >
-        <NavigationControl position="bottom-right" showCompass visualizePitch />
-        <MapHubLayers
-          areasColored={areasColored}
-          areaNameLabels={areaNameLabels}
-          windFieldArrowsGeoJson={windFieldArrowsGeoJson}
-          windLabels={windLabels}
-          yrForecastPoints={yrForecastPoints}
-          areaForecastSampleFc={areaForecastSampleFc}
-          drawPreview={drawPreview}
-          layerToggles={mapLayerToggles}
-        />
-        <MapHubMarkers
-          selectedOptimalWindMarker={selectedOptimalWindMarker}
-          optimalWindLenPx={optimalWindLenPx}
-          windPickPreview={windPickPreview}
-          windPickArrowLenPx={windPickArrowLenPx}
-        />
-      </MapGL>
+        mapMode={mapMode}
+        browseInteractiveLayerIds={browseInteractiveLayerIds}
+        layerToggles={mapLayerToggles}
+        areasColored={areasColored}
+        areaNameLabels={areaNameLabels}
+        windFieldArrowsGeoJson={windFieldArrowsGeoJson}
+        windLabels={windLabels}
+        yrForecastPoints={yrForecastPoints}
+        areaForecastSampleFc={areaForecastSampleFc}
+        drawPreview={drawPreview}
+        selectedOptimalWindMarker={selectedOptimalWindMarker}
+        optimalWindLenPx={optimalWindLenPx}
+        windPickPreview={windPickPreview}
+        windPickArrowLenPx={windPickArrowLenPx}
+        onMapLoad={handleMapLoad}
+        onMapStyleData={handleMapStyleData}
+        onMapZoomChange={setMapZoom}
+        onMouseMove={handleMapMouseMove}
+        onContextMenu={handleMapContextMenu}
+        onClick={handleMapClick}
+      />
 
       <MapHubLegend
         onBeforeOpenHelp={() => setSidebarTab("plan")}
