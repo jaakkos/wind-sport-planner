@@ -16,6 +16,7 @@ import { useFitMapToPracticeAreas } from "@/components/map-hub/hooks/useFitMapTo
 import { useTerrainPopoverPosition } from "@/components/map-hub/hooks/useTerrainPopoverPosition";
 import { useTerrainProbe } from "@/components/map-hub/hooks/useTerrainProbe";
 import { useMapLayers } from "@/components/map-hub/hooks/useMapLayers";
+import { useMapEventHandlers } from "@/components/map-hub/hooks/useMapEventHandlers";
 import { MapHubLegend } from "@/components/map-hub/MapHubLegend";
 import { TerrainClickPanel } from "@/components/map-hub/TerrainClickPanel";
 import { PracticeAreaEditPanel } from "@/components/map-hub/PracticeAreaEditPanel";
@@ -26,15 +27,9 @@ import { Sidebar } from "@/components/map-hub/sidebar/Sidebar";
 import { YouTab } from "@/components/map-hub/sidebar/YouTab";
 import { useBasemap } from "@/components/map-hub/hooks/useBasemap";
 import type { RankedPracticeArea } from "@/lib/heuristics/rankAreaTypes";
-import { yrNoHourlyTableUrlEn } from "@/lib/yrNoUrls";
 import { ensureWindFieldArrowImage } from "@/lib/map/windFieldArrowIcon";
 import {
-  cardinalFromDeg,
-  windFromFromDownwindArrow,
-} from "@/lib/map/windFormat";
-import {
   closePolygonCoordinates,
-  haversineKm,
   outerRingOpenCoords,
 } from "@/lib/map/polygons";
 import {
@@ -438,135 +433,32 @@ export function MapHub() {
     [loadExperiences, loadRank],
   );
 
-  const handleMapLoad = useCallback<
-    React.ComponentProps<typeof MapCanvas>["onMapLoad"]
-  >((e) => {
-    const map = e.target;
-    setMapEpoch((n) => n + 1);
-    const z = map.getZoom();
-    if (typeof z === "number" && Number.isFinite(z)) setMapZoom(z);
-    const syncWindFieldArrow = () => ensureWindFieldArrowImage(map);
-    syncWindFieldArrow();
-    map.on("style.load", syncWindFieldArrow);
-  }, []);
-
-  const handleMapStyleData = useCallback(() => {
-    const map = mapRef.current?.getMap();
-    if (map?.isStyleLoaded()) ensureWindFieldArrowImage(map);
-  }, []);
-
-  const handleMapMouseMove = useCallback<
-    React.ComponentProps<typeof MapCanvas>["onMouseMove"]
-  >(
-    (e) => {
-      if (mapMode !== "pickWind" || windPickStart == null) return;
-      const { lng, lat } = e.lngLat;
-      setWindPickHover([lng, lat]);
-    },
-    [mapMode, windPickStart],
-  );
-
-  const handleMapContextMenu = useCallback<
-    React.ComponentProps<typeof MapCanvas>["onContextMenu"]
-  >(
-    (e) => {
-      if (mapMode === "draw") {
-        e.preventDefault();
-        setDrawRing((r) => r.slice(0, -1));
-        return;
-      }
-      if (mapMode === "pickWind") {
-        e.preventDefault();
-        setWindPickStart(null);
-        setWindPickHover(null);
-      }
-    },
-    [mapMode],
-  );
-
-  const handleMapClick = useCallback<
-    React.ComponentProps<typeof MapCanvas>["onClick"]
-  >(
-    (e) => {
-      if (mapMode === "pickWind") {
-        const { lng, lat } = e.lngLat;
-        if (windPickStart == null) {
-          setWindPickStart([lng, lat]);
-          setWindPickHover([lng, lat]);
-          setMsg("Click where the wind blows (arrow head). Right-click = reset tail.");
-          return;
-        }
-        const [sx, sy] = windPickStart;
-        const distKm = haversineKm(sx, sy, lng, lat);
-        if (distKm < 0.003) {
-          setMsg("Move farther and click again to set direction.");
-          return;
-        }
-        const from = windFromFromDownwindArrow(sx, sy, lng, lat);
-        const aid = windPickAreaId;
-        setWindPickStart(null);
-        setWindPickHover(null);
-        setWindPickAreaId(null);
-        setMapMode("browse");
-        if (!aid) {
-          setMsg("Wind draw had no target area — open Edit area and try again.");
-          return;
-        }
-        setLoading(true);
-        void (async () => {
-          try {
-            await patchPracticeArea(aid, { optimalWindFromDeg: from });
-            await loadBundle();
-            await loadRank();
-            setMsg(
-              `Saved area optimal: ${cardinalFromDeg(from)} (${Math.round(from)}°) wind from.`,
-            );
-          } catch (err) {
-            setMsg(err instanceof Error ? err.message : "Could not save area optimal.");
-          } finally {
-            setLoading(false);
-          }
-        })();
-        return;
-      }
-      if (mapMode === "draw") {
-        const { lng, lat } = e.lngLat;
-        setDrawRing((r) => [...r, [lng, lat]]);
-        return;
-      }
-      const hits = e.features ?? [];
-      const yrHit = hits.find(
-        (h) =>
-          h.layer?.id === "yr-forecast-point" ||
-          h.layer?.id === "yr-forecast-point-halo",
-      );
-      if (yrHit?.geometry?.type === "Point") {
-        const c = yrHit.geometry.coordinates;
-        const lng = c[0]!;
-        const lat = c[1]!;
-        window.open(yrNoHourlyTableUrlEn(lat, lng), "_blank", "noopener,noreferrer");
-        return;
-      }
-      const areaHit = hits.find((h) => h.layer?.id === "areas-fill");
-      if (
-        !e.originalEvent.shiftKey &&
-        areaHit?.properties &&
-        typeof (areaHit.properties as { id?: string }).id === "string"
-      ) {
-        setSelectedPracticeAreaId(String((areaHit.properties as { id: string }).id));
-        clearTerrain();
-        return;
-      }
-      if (e.originalEvent.shiftKey) {
-        const { lng, lat } = e.lngLat;
-        window.open(yrNoHourlyTableUrlEn(lat, lng), "_blank", "noopener,noreferrer");
-        return;
-      }
-      const { lng, lat } = e.lngLat;
-      probeTerrain(lat, lng);
-    },
-    [mapMode, windPickStart, windPickAreaId, loadBundle, loadRank, clearTerrain, probeTerrain],
-  );
+  const {
+    onMapLoad: handleMapLoad,
+    onMapStyleData: handleMapStyleData,
+    onMouseMove: handleMapMouseMove,
+    onContextMenu: handleMapContextMenu,
+    onClick: handleMapClick,
+  } = useMapEventHandlers({
+    mapRef,
+    mapMode,
+    setMapMode,
+    windPickStart,
+    windPickAreaId,
+    setWindPickStart,
+    setWindPickHover,
+    setWindPickAreaId,
+    setDrawRing,
+    setSelectedPracticeAreaId,
+    setMsg,
+    setLoading,
+    setMapEpoch,
+    setMapZoom,
+    loadBundle,
+    loadRank,
+    clearTerrain,
+    probeTerrain,
+  });
 
   return (
     <div className="relative h-screen w-full">
