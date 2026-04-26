@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-type SportRankingFormState = {
+export type SportRankingFormState = {
   minWindMs: number;
   maxWindMs: number;
   idealMinMs: number;
@@ -33,7 +33,7 @@ type RankingPrefsApiResponse = {
   multiPointForecast: MultiPointForecastFormState;
 };
 
-type RankingForm = {
+export type RankingForm = {
   kiteski: SportRankingFormState;
   kitesurf: SportRankingFormState;
 };
