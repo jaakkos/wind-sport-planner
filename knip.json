@@ -25,7 +25,11 @@
     "src/types/next-auth.d.ts"
   ],
   "ignoreDependencies": [
-    "pg"
+    "pg",
+    "eslint-config-prettier",
+    "prettier",
+    "tailwindcss",
+    "postcss"
   ],
   "next": true,
   "vitest": true,

@@ -41,8 +41,15 @@ const eslintConfig = defineConfig([
     name: "next/ts-overrides",
     files: ["**/*.{ts,tsx}"],
     rules: {
-      "@typescript-eslint/no-unused-vars": "warn",
-      "@typescript-eslint/no-unused-expressions": "warn",
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+        },
+      ],
+      "@typescript-eslint/no-unused-expressions": "error",
     },
   },
   globalIgnores([

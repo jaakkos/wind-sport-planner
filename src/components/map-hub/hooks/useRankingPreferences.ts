@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export type SportRankingFormState = {
+type SportRankingFormState = {
   minWindMs: number;
   maxWindMs: number;
   idealMinMs: number;

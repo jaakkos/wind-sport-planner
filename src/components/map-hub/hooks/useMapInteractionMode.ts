@@ -15,7 +15,7 @@ import {
   patchPracticeArea,
 } from "@/lib/practiceArea/client";
 
-export type MapMode = "browse" | "draw" | "pickWind";
+type MapMode = "browse" | "draw" | "pickWind";
 
 type Args = {
   isAuthed: boolean;
