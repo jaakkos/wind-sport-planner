@@ -12,20 +12,11 @@ import {
 import { AreaForecastSamples } from "./AreaForecastSamples";
 import { PersistedCollapsible } from "./MapHubDisclosures";
 import { hubOverlayZ } from "./mapHubOverlayZ";
-import {
-  hubBtnDanger,
-  hubBtnPrimary,
-  hubBtnSecondary,
-  hubBtnSecondarySm,
-  hubInput,
-  hubMeta,
-  hubPanelShell,
-  hubSectionTitle,
-  hubSelect,
-} from "./hubUi";
+import { hubBtnDanger, hubPanelShell } from "./hubUi";
 import type { Bundle } from "./types";
-
-const LABEL_PRESETS = ["primary", "lakes", "coast", "backup", "other"] as const;
+import { BasicsSection } from "./practice-area-edit/BasicsSection";
+import { WindSection } from "./practice-area-edit/WindSection";
+import { ReadOnlyView } from "./practice-area-edit/ReadOnlyView";
 
 export function PracticeAreaEditPanel({
   areaId,
@@ -248,214 +239,57 @@ export function PracticeAreaEditPanel({
           edit it, or it may have been removed.
         </p>
       ) : !isOwn ? (
-        <>
-          <p className="mt-2 rounded border border-app-info-border bg-app-info-bg px-2 py-1.5 text-[11px] leading-snug text-app-info-fg">
-            This practice area belongs to another user. You can view it and log sessions here; only
-            the owner can change boundaries, wind settings, or visibility.
-          </p>
-          <p className="break-all font-mono text-[10px] text-app-fg-subtle">{areaId}</p>
-          <p className="mt-2 text-xs">
-            <span className="font-medium text-app-fg-muted">Name</span>
-            <br />
-            {areaName.trim() || "Untitled"}
-          </p>
-          <p className="mt-2 text-xs">
-            <span className="font-medium text-app-fg-muted">Sports</span>
-            <br />
-            {[kiteski && "kiteski", kitesurf && "kitesurf"].filter(Boolean).join(", ") || "—"}
-          </p>
-          {props?.isPublic === true ? (
-            <p className="mt-2 text-[11px] text-app-fg-muted">Listed as public — visible to all signed-in users.</p>
-          ) : null}
-          <div className="mt-3 border-t border-app-border pt-2">
-            <p className={hubSectionTitle}>Optimal wind</p>
-            <p className={`mt-1 ${hubMeta}`}>
-              Saved optimal: {optimalPreview}. Sectors: {sectorsPreview}.
-            </p>
-          </div>
-          <PersistedCollapsible
-            title="Forecast samples"
-            summaryCollapsed="Elevations, Yr links, amber dots on map"
-            storageKey="mapHub.editForecastSamplesExpanded"
-            onOpenChange={handleForecastSamplesOpenChange}
-          >
-            <AreaForecastSamples
-              key={`${areaId}-${forecastAtIso}-${activeSport}-${optimalWindHalfWidthDeg}`}
-              areaId={areaId}
-              forecastAtIso={forecastAtIso}
-              sport={activeSport}
-              optimalWindHalfWidthDeg={optimalWindHalfWidthDeg}
-              onMapPointsChange={onForecastSamplesMapChange}
-              embedded
-            />
-          </PersistedCollapsible>
-        </>
+        <ReadOnlyView
+          areaId={areaId}
+          areaName={areaName}
+          kiteski={kiteski}
+          kitesurf={kitesurf}
+          isPublic={props?.isPublic === true}
+          optimalPreview={optimalPreview}
+          sectorsPreview={sectorsPreview}
+          forecastAtIso={forecastAtIso}
+          activeSport={activeSport}
+          optimalWindHalfWidthDeg={optimalWindHalfWidthDeg}
+          onForecastSamplesMapChange={onForecastSamplesMapChange}
+          onForecastSamplesOpenChange={handleForecastSamplesOpenChange}
+        />
       ) : (
         <>
           <p className="break-all font-mono text-[10px] text-app-fg-subtle">{areaId}</p>
 
-          <div className="mt-2 space-y-2">
-            <p className={hubSectionTitle}>Basics</p>
-            <label className="block text-xs text-app-fg">
-              Name
-              <input
-                type="text"
-                value={areaName}
-                onChange={(e) => setAreaName(e.target.value.slice(0, 120))}
-                className={hubInput}
-                maxLength={120}
-                placeholder="Visible on map and in lists"
-              />
-            </label>
-            <fieldset className="space-y-1">
-              <legend className="text-xs font-medium text-app-fg-muted">Sports</legend>
-              <label className="flex items-center gap-2 text-xs">
-                <input type="checkbox" checked={kiteski} onChange={(e) => setKiteski(e.target.checked)} />
-                Kite ski
-              </label>
-              <label className="flex items-center gap-2 text-xs">
-                <input
-                  type="checkbox"
-                  checked={kitesurf}
-                  onChange={(e) => setKitesurf(e.target.checked)}
-                />
-                Kite surf
-              </label>
-            </fieldset>
-            <label className="block text-xs text-app-fg">
-              Label preset
-              <select value={labelPreset} onChange={(e) => setLabelPreset(e.target.value)} className={hubSelect}>
-                {LABEL_PRESETS.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex cursor-pointer items-start gap-2 text-xs leading-snug text-app-fg">
-              <input
-                type="checkbox"
-                className="mt-0.5"
-                checked={areaPublic}
-                onChange={(e) => setAreaPublic(e.target.checked)}
-              />
-              <span>
-                <span className="font-medium text-app-fg">Public</span>
-                <span className="block text-[10px] text-app-fg-muted">
-                  Visible on the map and in rankings for every signed-in user (still requires login).
-                </span>
-              </span>
-            </label>
-            <button
-              type="button"
-              disabled={busy}
-              className={`w-full ${hubBtnPrimary}`}
-              onClick={() => void saveMeta()}
-            >
-              Save name, label, sports &amp; public
-            </button>
-          </div>
+          <BasicsSection
+            areaName={areaName}
+            onAreaNameChange={setAreaName}
+            kiteski={kiteski}
+            onKiteskiChange={setKiteski}
+            kitesurf={kitesurf}
+            onKitesurfChange={setKitesurf}
+            labelPreset={labelPreset}
+            onLabelPresetChange={setLabelPreset}
+            areaPublic={areaPublic}
+            onAreaPublicChange={setAreaPublic}
+            busy={busy}
+            onSave={() => void saveMeta()}
+          />
 
-          <div className="mt-3 border-t border-app-border pt-2">
-            <p className={hubSectionTitle}>Wind &amp; direction</p>
-            <p className={`mt-1 ${hubMeta}`}>
-              Direction wind comes <strong>from</strong> (°). Drives ranking; optional arc below uses
-              the sidebar &quot;Saved-area sector half-width&quot;.
-            </p>
-            {areaWindPickActive ? (
-              <div className="mt-2 space-y-2 rounded-xl border border-app-border bg-app-accent-soft p-2">
-                <p className="text-[11px] leading-snug text-app-accent-hover">
-                  <strong>1.</strong> Click the <strong>tail</strong> on the map.{" "}
-                  <strong>2.</strong> Click the <strong>head</strong> (downwind). Saves automatically.
-                </p>
-                <button
-                  type="button"
-                  className={`w-full ${hubBtnSecondary}`}
-                  onClick={() => onCancelWindPick()}
-                >
-                  Cancel drawing
-                </button>
-                <p className="text-[10px] text-app-fg-muted">
-                  <kbd className="rounded bg-app-accent-muted px-0.5">Esc</kbd> · right-click resets tail
-                </p>
-              </div>
-            ) : (
-              <button
-                type="button"
-                disabled={busy}
-                className={`mt-2 w-full ${hubBtnPrimary}`}
-                onClick={() => onDrawAreaOptimalWind()}
-              >
-                Draw direction on map
-              </button>
-            )}
-            <p className="mt-2 text-[10px] font-medium uppercase tracking-wide text-app-fg-subtle">
-              Or type degrees
-            </p>
-            <label className="mt-0.5 block text-xs text-app-fg">
-              Wind from (°)
-              <input
-                type="number"
-                min={0}
-                max={360}
-                step={1}
-                value={optimalFromInput}
-                onChange={(e) => setOptimalFromInput(e.target.value)}
-                className={hubInput}
-                placeholder="e.g. 180 — empty = clear saved value"
-                disabled={busy || areaWindPickActive}
-              />
-            </label>
-            <div className="mt-1 flex gap-1">
-              <button
-                type="button"
-                disabled={busy || areaWindPickActive}
-                className={`flex-1 ${hubBtnSecondarySm}`}
-                onClick={() => void saveAreaOptimal()}
-              >
-                Save optimal
-              </button>
-              <button
-                type="button"
-                disabled={busy || areaWindPickActive}
-                className={hubBtnSecondarySm}
-                onClick={() => void patch({ optimalWindFromDeg: null })}
-              >
-                Clear
-              </button>
-            </div>
-            <p className={`mt-2 ${hubMeta}`}>
-              Saved optimal: {optimalPreview}. Sectors: {sectorsPreview}. Stronger rank when forecast
-              aligns; extra boost inside saved sectors.
-            </p>
-            <button
-              type="button"
-              disabled={busy || areaWindPickActive}
-              className={`mt-3 w-full ${hubBtnSecondary}`}
-              onClick={() => void applyWindSector()}
-            >
-              Apply acceptable arc from area optimal (sidebar ± width)
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              className={`w-full ${hubBtnSecondary}`}
-              onClick={() => void clearWindSectors()}
-            >
-              Clear saved wind sectors
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              className={`w-full ${hubBtnSecondary}`}
-              onClick={() => {
-                const g = feature.geometry as GeoJSON.Polygon;
-                if (g?.type === "Polygon") onStartBoundaryEdit(g);
-              }}
-            >
-              Redraw boundary
-            </button>
-          </div>
+          <WindSection
+            areaWindPickActive={areaWindPickActive}
+            onDrawAreaOptimalWind={onDrawAreaOptimalWind}
+            onCancelWindPick={onCancelWindPick}
+            optimalFromInput={optimalFromInput}
+            onOptimalFromChange={setOptimalFromInput}
+            optimalPreview={optimalPreview}
+            sectorsPreview={sectorsPreview}
+            busy={busy}
+            onSaveAreaOptimal={() => void saveAreaOptimal()}
+            onClearOptimal={() => void patch({ optimalWindFromDeg: null })}
+            onApplyWindSector={() => void applyWindSector()}
+            onClearWindSectors={() => void clearWindSectors()}
+            onStartBoundaryEdit={() => {
+              const g = feature.geometry as GeoJSON.Polygon;
+              if (g?.type === "Polygon") onStartBoundaryEdit(g);
+            }}
+          />
 
           <PersistedCollapsible
             title="Forecast samples"
