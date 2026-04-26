@@ -59,6 +59,7 @@
     "dotenv": "^17.4.2",
     "eslint": "^10",
     "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.5.0",
     "knip": "^6.7.0",
     "madge": "^8.0.0",

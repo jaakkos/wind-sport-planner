@@ -63,6 +63,9 @@ jobs:
       - name: ESLint
         run: npm run lint
 
+      - name: Knip (unused files / exports / dependencies)
+        run: npm run audit:dead
+
       - name: Unit & functional tests (Vitest + coverage)
         run: npm run test:coverage
 
