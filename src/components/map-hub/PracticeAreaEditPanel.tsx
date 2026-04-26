@@ -255,8 +255,6 @@ export function PracticeAreaEditPanel({
         />
       ) : (
         <>
-          <p className="break-all font-mono text-[10px] text-app-fg-subtle">{areaId}</p>
-
           <BasicsSection
             areaName={areaName}
             onAreaNameChange={setAreaName}
@@ -317,6 +315,9 @@ export function PracticeAreaEditPanel({
             >
               Delete area
             </button>
+            <p className="mt-2 break-all font-mono text-[10px] text-app-fg-subtle">
+              ID {areaId}
+            </p>
           </div>
         </>
       )}
