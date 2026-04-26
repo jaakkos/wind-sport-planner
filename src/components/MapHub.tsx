@@ -1,8 +1,7 @@
 "use client";
 
 import { signOut, useSession } from "next-auth/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { MapRef } from "react-map-gl/maplibre";
+import { useEffect, useMemo, useState } from "react";
 import type { FeatureCollection } from "geojson";
 import { useSidebarTab } from "@/components/map-hub/hooks/useSidebarTab";
 import { useMapLayerToggles } from "@/components/map-hub/hooks/useMapLayerToggles";
@@ -19,6 +18,10 @@ import { useMapLayers } from "@/components/map-hub/hooks/useMapLayers";
 import { useMapEventHandlers } from "@/components/map-hub/hooks/useMapEventHandlers";
 import { useSidebarSummaries } from "@/components/map-hub/hooks/useSidebarSummaries";
 import { useMapInteractionMode } from "@/components/map-hub/hooks/useMapInteractionMode";
+import {
+  useMapInstance,
+  useEnsureWindFieldArrowImage,
+} from "@/components/map-hub/hooks/useMapInstance";
 import { MapHubLegend } from "@/components/map-hub/MapHubLegend";
 import { TerrainClickPanel } from "@/components/map-hub/TerrainClickPanel";
 import { PracticeAreaEditPanel } from "@/components/map-hub/PracticeAreaEditPanel";
@@ -28,18 +31,12 @@ import { PlanTab } from "@/components/map-hub/sidebar/PlanTab";
 import { Sidebar } from "@/components/map-hub/sidebar/Sidebar";
 import { YouTab } from "@/components/map-hub/sidebar/YouTab";
 import { useBasemap } from "@/components/map-hub/hooks/useBasemap";
-import type { RankedPracticeArea } from "@/lib/heuristics/rankAreaTypes";
-import { ensureWindFieldArrowImage } from "@/lib/map/windFieldArrowIcon";
 
 export function MapHub() {
   const { status } = useSession();
   const isAuthed = status === "authenticated";
   const sessionPending = status === "loading";
 
-  const mapRef = useRef<MapRef>(null);
-  /** Bumps on map `load` so effects can re-sync icons after the map instance exists. */
-  const [mapEpoch, setMapEpoch] = useState(0);
-  const [mapZoom, setMapZoom] = useState(5);
   const {
     basemap,
     setBasemap,
@@ -175,27 +172,19 @@ export function MapHub() {
     return ids;
   }, [mapMode, mapLayerToggles.forecastSampleDots]);
 
+  const {
+    mapRef,
+    mapEpoch,
+    setMapEpoch,
+    mapZoom,
+    setMapZoom,
+    focusRankedAreaOnMap,
+  } = useMapInstance({ setSelectedPracticeAreaId, clearTerrain });
+
   const terrainPopoverPos = useTerrainPopoverPosition({
     mapRef,
     anchor: terrainClick ? { lat: terrainClick.lat, lng: terrainClick.lng } : null,
   });
-
-  /** Centre map on ranked area centroid and select it (outline + edit panel). */
-  const focusRankedAreaOnMap = useCallback((r: RankedPracticeArea) => {
-    const map = mapRef.current?.getMap();
-    if (map) {
-      map.stop();
-      const { lng, lat } = r.centroid;
-      map.flyTo({
-        center: [lng, lat],
-        zoom: Math.max(map.getZoom(), 12),
-        duration: 1000,
-        essential: true,
-      });
-    }
-    setSelectedPracticeAreaId(r.areaId);
-    clearTerrain();
-  }, [clearTerrain]);
 
   useFitMapToPracticeAreas({
     mapRef,
@@ -226,13 +215,12 @@ export function MapHub() {
     mapZoom,
   });
 
-  const windFieldFeatureCount = windFieldArrowsGeoJson.features.length;
-  useEffect(() => {
-    if (windFieldFeatureCount === 0) return;
-    const map = mapRef.current?.getMap();
-    if (!map?.isStyleLoaded()) return;
-    ensureWindFieldArrowImage(map);
-  }, [mapEpoch, windFieldFeatureCount, mapStyle]);
+  useEnsureWindFieldArrowImage({
+    mapRef,
+    mapEpoch,
+    mapStyle,
+    windFieldFeatureCount: windFieldArrowsGeoJson.features.length,
+  });
 
   const { windRankSummary, forecastSummary, scoringSummaryCollapsed } =
     useSidebarSummaries({
