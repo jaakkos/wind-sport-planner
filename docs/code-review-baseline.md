@@ -109,4 +109,26 @@ Screenshots captured in [`docs/screenshots/baseline/`](screenshots/baseline/) (C
 
 ---
 
-*Generated 2026-04-25.*
+## Outcome — April 2026
+
+The cleanup landed across six phases (Phase 0–6, all in small commits direct to `main`). Snapshot below was taken after Phase 6.
+
+| Metric | Baseline | Outcome | Direction |
+|---|---:|---:|:--|
+| Source files (excl. generated) | 77 | 107 | ↑ — extracted hooks & helpers, more single-purpose modules |
+| Total source LOC | 9,680 | 10,482 | ↑ — net growth from explicit prop types & docstrings |
+| Files > 400 LOC | 6 | 4 | ↓ |
+| `MapHub.tsx` LOC | **2,628** | **438** | ↓ 83 % |
+| Tests passing | 89 / 89 | **189 / 189** | ↑ +100 |
+| Knip unused files | 5 | **0** | ✓ |
+| Knip unused exports | 23 | **0** | ✓ |
+| Knip unused dependencies | 2 | **0** | ✓ |
+| Cycles in `src/` (excl. generated) | 0 | 0 | ✓ kept |
+
+`MapHub` is now a thin orchestrator built from 17 hooks under [`src/components/map-hub/hooks/`](../src/components/map-hub/hooks). Strava-era code, the dead `MapHub*Tab*` islands, and the FMI weather stub were deleted. Route handlers parse via shared `requireUserSession` / `parseJsonBody` / forecast query helpers in `src/lib/api/`, and `as any` is gone from app code.
+
+CI now enforces what these phases established: ESLint runs `no-unused-*` and `react-hooks/*` as errors, applies a 600-line file cap and a 400-line function cap (test files exempt), and Knip blocks PRs that introduce unused files, exports, or dependencies. Conventions for future work are documented in [`AGENTS.md`](../AGENTS.md).
+
+---
+
+*Generated 2026-04-25, outcomes appended 2026-04-26.*
