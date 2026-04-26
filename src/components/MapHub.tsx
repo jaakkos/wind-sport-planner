@@ -8,7 +8,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import MapGL, {
   Layer,
   MapRef,
-  Marker,
   NavigationControl,
   Source,
 } from "react-map-gl/maplibre";
@@ -38,6 +37,7 @@ import { RankedAreaRow } from "@/components/map-hub/RankedAreaRow";
 import { RankedListSkeleton, ScoringPrefsSkeleton } from "@/components/map-hub/hubSkeleton";
 import { hubOverlayZ } from "@/components/map-hub/mapHubOverlayZ";
 import { PracticeAreaEditPanel } from "@/components/map-hub/PracticeAreaEditPanel";
+import { MapHubMarkers } from "@/components/map-hub/map/MapHubMarkers";
 import {
   hubBtnPrimary,
   hubBtnSecondary,
@@ -50,7 +50,6 @@ import { type BasemapId } from "@/lib/map/styles";
 import { useBasemap } from "@/components/map-hub/hooks/useBasemap";
 import type { RankedPracticeArea } from "@/lib/heuristics/rankAreaTypes";
 import { yrNoHourlyTableUrlEn } from "@/lib/yrNoUrls";
-import { cssRotateEastBaseToWindTo } from "@/lib/map/windArrowDisplay";
 import {
   ensureWindFieldArrowImage,
   WIND_FIELD_ARROW_IMAGE_ID,
@@ -1586,123 +1585,12 @@ export function MapHub() {
             />
           </Source>
         ) : null}
-        {selectedOptimalWindMarker && optimalWindLenPx > 0 ? (
-          <Marker
-            longitude={selectedOptimalWindMarker.lng}
-            latitude={selectedOptimalWindMarker.lat}
-            anchor="left"
-            rotationAlignment="map"
-            pitchAlignment="map"
-            style={{ pointerEvents: "none" }}
-          >
-            {(() => {
-              const w = optimalWindLenPx;
-              const shaftW = Math.max(6, w - 14);
-              const rot = cssRotateEastBaseToWindTo(selectedOptimalWindMarker.windToDeg);
-              return (
-                <svg
-                  width={w}
-                  height={20}
-                  viewBox={`0 0 ${w} 20`}
-                  style={{
-                    display: "block",
-                    transform: `rotate(${rot}deg)`,
-                    transformOrigin: "0 50%",
-                    filter:
-                      "drop-shadow(0 0 1px rgb(255 255 255 / 0.9)) drop-shadow(0 0 2px rgb(255 255 255 / 0.5))",
-                  }}
-                  aria-hidden
-                >
-                  <rect
-                    x="0"
-                    y="8"
-                    width={shaftW}
-                    height="4"
-                    rx="1"
-                    fill="#b91c1c"
-                    fillOpacity={0.92}
-                  />
-                  <path
-                    d={`M${shaftW} 3 L${w} 10 L${shaftW} 17 Z`}
-                    fill="#dc2626"
-                    stroke="#7f1d1d"
-                    strokeWidth={1}
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              );
-            })()}
-          </Marker>
-        ) : null}
-        {windPickPreview?.kind === "dot" ? (
-          <Marker
-            longitude={windPickPreview.lng}
-            latitude={windPickPreview.lat}
-            anchor="center"
-            rotationAlignment="map"
-            pitchAlignment="map"
-            style={{ pointerEvents: "none" }}
-          >
-            <svg width={18} height={18} viewBox="0 0 18 18" aria-hidden>
-              <circle
-                cx="9"
-                cy="9"
-                r="6"
-                fill="#6d28d9"
-                stroke="#ffffff"
-                strokeWidth="2"
-              />
-            </svg>
-          </Marker>
-        ) : null}
-        {windPickPreview?.kind === "arrow" && windPickArrowLenPx > 0 ? (
-          <Marker
-            longitude={windPickPreview.tailLng}
-            latitude={windPickPreview.tailLat}
-            anchor="left"
-            rotationAlignment="map"
-            pitchAlignment="map"
-            style={{ pointerEvents: "none" }}
-          >
-            {(() => {
-              const w = windPickArrowLenPx;
-              const shaftW = Math.max(4, w - 12);
-              const rot = cssRotateEastBaseToWindTo(windPickPreview.windToDeg);
-              return (
-                <svg
-                  width={w}
-                  height={20}
-                  viewBox={`0 0 ${w} 20`}
-                  style={{
-                    display: "block",
-                    transform: `rotate(${rot}deg)`,
-                    transformOrigin: "0 50%",
-                    filter:
-                      "drop-shadow(0 0 1px rgb(255 255 255 / 0.9)) drop-shadow(0 0 2px rgb(255 255 255 / 0.5))",
-                  }}
-                  aria-hidden
-                >
-                  <rect
-                    x="0"
-                    y="8"
-                    width={shaftW}
-                    height="4"
-                    rx="1"
-                    fill="#7c3aed"
-                    fillOpacity={0.95}
-                  />
-                  <path
-                    d={`M${shaftW} 4 L${w} 10 L${shaftW} 16 Z`}
-                    fill="#8b5cf6"
-                    stroke="#5b21b6"
-                    strokeWidth={1}
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              );
-            })()}
-          </Marker>
-        ) : null}
+        <MapHubMarkers
+          selectedOptimalWindMarker={selectedOptimalWindMarker}
+          optimalWindLenPx={optimalWindLenPx}
+          windPickPreview={windPickPreview}
+          windPickArrowLenPx={windPickArrowLenPx}
+        />
         {drawPreview?.features.length ? (
           <Source id="draw-preview" type="geojson" data={drawPreview}>
             <Layer
