@@ -15,6 +15,7 @@ import { useToolSections } from "@/components/map-hub/hooks/useToolSections";
 import { useFitMapToPracticeAreas } from "@/components/map-hub/hooks/useFitMapToPracticeAreas";
 import { useTerrainPopoverPosition } from "@/components/map-hub/hooks/useTerrainPopoverPosition";
 import { useTerrainProbe } from "@/components/map-hub/hooks/useTerrainProbe";
+import { useMapLayers } from "@/components/map-hub/hooks/useMapLayers";
 import { MapHubLegend } from "@/components/map-hub/MapHubLegend";
 import { TerrainClickPanel } from "@/components/map-hub/TerrainClickPanel";
 import { PracticeAreaEditPanel } from "@/components/map-hub/PracticeAreaEditPanel";
@@ -36,20 +37,6 @@ import {
   haversineKm,
   outerRingOpenCoords,
 } from "@/lib/map/polygons";
-import {
-  buildAreaNameLabels,
-  buildAreasColored,
-  buildWindFieldArrows,
-  buildWindLabels,
-  buildYrForecastPoints,
-  selectedAreaOptimalWindMarker,
-} from "@/lib/map/areaLayers";
-import {
-  buildDrawPreview,
-  buildWindPickPreview,
-  optimalWindMarkerLengthPx,
-  windPickArrowLengthPx,
-} from "@/lib/map/interactionLayers";
 import {
   createPracticeArea,
   patchPracticeArea,
@@ -205,21 +192,27 @@ export function MapHub() {
     mapEpoch,
   });
 
-  const areasColored = useMemo(
-    () => buildAreasColored(bundle?.practiceAreas, ranked, selectedPracticeAreaId),
-    [bundle, ranked, selectedPracticeAreaId],
-  );
-
-  const areaNameLabels = useMemo(
-    () => buildAreaNameLabels(bundle?.practiceAreas),
-    [bundle],
-  );
-
-  /** Wind field: GeoJSON points under area fill; SVG icon + map rotation in MapLibre symbol layer. */
-  const windFieldArrowsGeoJson = useMemo(
-    () => buildWindFieldArrows(bundle?.practiceAreas, ranked),
-    [ranked, bundle],
-  );
+  const {
+    areasColored,
+    areaNameLabels,
+    windFieldArrowsGeoJson,
+    windLabels,
+    yrForecastPoints,
+    selectedOptimalWindMarker,
+    windPickPreview,
+    optimalWindLenPx,
+    windPickArrowLenPx,
+    drawPreview,
+  } = useMapLayers({
+    bundle,
+    ranked,
+    selectedPracticeAreaId,
+    mapMode,
+    drawRing,
+    windPickStart,
+    windPickHover,
+    mapZoom,
+  });
 
   const windFieldFeatureCount = windFieldArrowsGeoJson.features.length;
   useEffect(() => {
@@ -228,17 +221,6 @@ export function MapHub() {
     if (!map?.isStyleLoaded()) return;
     ensureWindFieldArrowImage(map);
   }, [mapEpoch, windFieldFeatureCount, mapStyle]);
-
-  const windLabels = useMemo(() => buildWindLabels(ranked), [ranked]);
-
-  /** Centroid markers: click opens Yr.no hourly (point) forecast for that coordinate. */
-  const yrForecastPoints = useMemo(() => buildYrForecastPoints(ranked), [ranked]);
-
-  /** Downwind preview at selected area centroid when that area has a saved optimal (CSS marker). */
-  const selectedOptimalWindMarker = useMemo(
-    () => selectedAreaOptimalWindMarker(bundle?.practiceAreas, selectedPracticeAreaId),
-    [bundle, selectedPracticeAreaId],
-  );
 
   useEffect(() => {
     if (mapMode === "draw") {
@@ -293,23 +275,6 @@ export function MapHub() {
     setWindPickHover(null);
     setMapMode("browse");
   }, []);
-
-  const windPickPreview = useMemo(
-    () => buildWindPickPreview({ mapMode, windPickStart, windPickHover }),
-    [mapMode, windPickStart, windPickHover],
-  );
-
-  const optimalWindLenPx = useMemo(
-    () => optimalWindMarkerLengthPx(selectedOptimalWindMarker, mapZoom),
-    [selectedOptimalWindMarker, mapZoom],
-  );
-
-  const windPickArrowLenPx = useMemo(
-    () => windPickArrowLengthPx(windPickPreview, mapZoom),
-    [windPickPreview, mapZoom],
-  );
-
-  const drawPreview = useMemo(() => buildDrawPreview(drawRing), [drawRing]);
 
   async function savePracticeArea(
     poly: GeoJSON.Polygon,
