@@ -17,6 +17,7 @@ import { useTerrainPopoverPosition } from "@/components/map-hub/hooks/useTerrain
 import { useTerrainProbe } from "@/components/map-hub/hooks/useTerrainProbe";
 import { useMapLayers } from "@/components/map-hub/hooks/useMapLayers";
 import { useMapEventHandlers } from "@/components/map-hub/hooks/useMapEventHandlers";
+import { useSidebarSummaries } from "@/components/map-hub/hooks/useSidebarSummaries";
 import { MapHubLegend } from "@/components/map-hub/MapHubLegend";
 import { TerrainClickPanel } from "@/components/map-hub/TerrainClickPanel";
 import { PracticeAreaEditPanel } from "@/components/map-hub/PracticeAreaEditPanel";
@@ -36,11 +37,6 @@ import {
   createPracticeArea,
   patchPracticeArea,
 } from "@/lib/practiceArea/client";
-import {
-  createExperience,
-  deleteExperience,
-} from "@/lib/experiences/client";
-
 export function MapHub() {
   const { status } = useSession();
   const isAuthed = status === "authenticated";
@@ -75,7 +71,6 @@ export function MapHub() {
     loading: bundleLoading,
     reload: loadBundle,
   } = useMapBundle(activeSport);
-  const { experiences, reload: loadExperiences } = useExperiences(activeSport);
   const {
     setAnchorMs: setForecastAnchorMs,
     hoursAhead,
@@ -112,6 +107,17 @@ export function MapHub() {
     atIso: forecastAtIso,
     optimalWindHalfWidthDeg,
     onError: setMsg,
+  });
+  const {
+    experiences,
+    reload: loadExperiences,
+    submit: submitExperience,
+    remove: removeExperience,
+  } = useExperiences({
+    activeSport,
+    onChanged: loadRank,
+    setMessage: setMsg,
+    setLoading,
   });
   /** Logged-in: editable wind bands & weights for forecast ranking (per sport). */
   const {
@@ -328,46 +334,18 @@ export function MapHub() {
     void savePracticeArea(poly, undefined);
   }
 
-  const windRankSummary = useMemo(() => {
-    if (mapMode === "pickWind") {
-      return "Drawing optimal wind for practice area…";
-    }
-    const pctHalf = Math.round((optimalWindHalfWidthDeg / 180) * 100);
-    let band = "";
-    if (isAuthed && rankingForm) {
-      const w = rankingForm[activeSport];
-      band = ` · ${w.minWindMs}–${w.maxWindMs} m/s`;
-    }
-    return `Per-area optimal · match width ±${optimalWindHalfWidthDeg}° (${pctHalf}% half-circle)${band}`;
-  }, [mapMode, optimalWindHalfWidthDeg, isAuthed, rankingForm, activeSport]);
-
-  const forecastSummary = useMemo(() => {
-    const rel =
-      hoursAhead === 0
-        ? "anchored to this hour"
-        : `+${hoursAhead}h from the anchor hour`;
-    const scoringHint =
-      sessionPending
-        ? ""
-        : isAuthed && rankingForm
-          ? " · scoring below"
-          : !isAuthed
-            ? " · sign in for custom scoring"
-            : "";
-    return `${ranked.length} area(s) · ${rel}${scoringHint}`;
-  }, [hoursAhead, ranked.length, sessionPending, isAuthed, rankingForm]);
-
-  const scoringSummaryCollapsed = useMemo(() => {
-    if (!rankingForm || !multiPointForm) return "Customize wind bands, sampling & weights";
-    const w = rankingForm[activeSport];
-    const modeLabel =
-      multiPointForm.mode === "off"
-        ? "centre only"
-        : multiPointForm.mode === "auto"
-          ? "auto multi-spot"
-          : "multi-spot on";
-    return `${w.minWindMs}–${w.maxWindMs} m/s · ${modeLabel}`;
-  }, [rankingForm, multiPointForm, activeSport]);
+  const { windRankSummary, forecastSummary, scoringSummaryCollapsed } =
+    useSidebarSummaries({
+      isAuthed,
+      sessionPending,
+      activeSport,
+      mapMode,
+      optimalWindHalfWidthDeg,
+      rankingForm,
+      multiPointForm,
+      hoursAhead,
+      rankedCount: ranked.length,
+    });
 
   const startDrawing = useCallback(() => {
     setWindPickStart(null);
@@ -388,50 +366,6 @@ export function MapHub() {
     setMapMode("browse");
     setEditingAreaId(null);
   }, []);
-
-  const submitExperience = useCallback(
-    async (input: {
-      practiceAreaId: string;
-      occurredAt: string;
-      sessionSuitability: string;
-    }) => {
-      setLoading(true);
-      setMsg(null);
-      try {
-        await createExperience({
-          practiceAreaId: input.practiceAreaId,
-          sport: activeSport,
-          occurredAt: input.occurredAt,
-          sessionSuitability: input.sessionSuitability,
-        });
-        await loadExperiences();
-        await loadRank();
-        setMsg("Experience saved.");
-      } catch (err) {
-        setMsg(err instanceof Error ? err.message : "Save failed");
-      } finally {
-        setLoading(false);
-      }
-    },
-    [activeSport, loadExperiences, loadRank],
-  );
-
-  const removeExperience = useCallback(
-    async (id: string) => {
-      setLoading(true);
-      try {
-        await deleteExperience(id);
-        await loadExperiences();
-        await loadRank();
-        setMsg("Experience removed.");
-      } catch {
-        setMsg("Could not delete experience.");
-      } finally {
-        setLoading(false);
-      }
-    },
-    [loadExperiences, loadRank],
-  );
 
   const {
     onMapLoad: handleMapLoad,
