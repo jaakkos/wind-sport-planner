@@ -18,6 +18,7 @@ import { useTerrainProbe } from "@/components/map-hub/hooks/useTerrainProbe";
 import { useMapLayers } from "@/components/map-hub/hooks/useMapLayers";
 import { useMapEventHandlers } from "@/components/map-hub/hooks/useMapEventHandlers";
 import { useSidebarSummaries } from "@/components/map-hub/hooks/useSidebarSummaries";
+import { useMapInteractionMode } from "@/components/map-hub/hooks/useMapInteractionMode";
 import { MapHubLegend } from "@/components/map-hub/MapHubLegend";
 import { TerrainClickPanel } from "@/components/map-hub/TerrainClickPanel";
 import { PracticeAreaEditPanel } from "@/components/map-hub/PracticeAreaEditPanel";
@@ -29,28 +30,11 @@ import { YouTab } from "@/components/map-hub/sidebar/YouTab";
 import { useBasemap } from "@/components/map-hub/hooks/useBasemap";
 import type { RankedPracticeArea } from "@/lib/heuristics/rankAreaTypes";
 import { ensureWindFieldArrowImage } from "@/lib/map/windFieldArrowIcon";
-import {
-  closePolygonCoordinates,
-  outerRingOpenCoords,
-} from "@/lib/map/polygons";
-import {
-  createPracticeArea,
-  patchPracticeArea,
-} from "@/lib/practiceArea/client";
+
 export function MapHub() {
   const { status } = useSession();
   const isAuthed = status === "authenticated";
   const sessionPending = status === "loading";
-
-  useEffect(() => {
-    if (sessionPending || isAuthed) return;
-    setMapMode("browse");
-    setDrawRing([]);
-    setEditingAreaId(null);
-    setWindPickAreaId(null);
-    setWindPickStart(null);
-    setWindPickHover(null);
-  }, [sessionPending, isAuthed]);
 
   const mapRef = useRef<MapRef>(null);
   /** Bumps on map `load` so effects can re-sync icons after the map instance exists. */
@@ -79,7 +63,6 @@ export function MapHub() {
   } = useForecastTime();
   const [selectedPracticeAreaId, setSelectedPracticeAreaId] = useState<string | null>(null);
   const [areaForecastSampleFc, setAreaForecastSampleFc] = useState<FeatureCollection | null>(null);
-  const [editingAreaId, setEditingAreaId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const {
@@ -87,13 +70,6 @@ export function MapHub() {
     probe: probeTerrain,
     clear: clearTerrain,
   } = useTerrainProbe();
-  const [mapMode, setMapMode] = useState<"browse" | "draw" | "pickWind">("browse");
-  const [drawRing, setDrawRing] = useState<[number, number][]>([]);
-  const [drawAreaName, setDrawAreaName] = useState("");
-  const [windPickStart, setWindPickStart] = useState<[number, number] | null>(null);
-  const [windPickHover, setWindPickHover] = useState<[number, number] | null>(null);
-  /** When set, user is drawing optimal wind for this practice area on the map. */
-  const [windPickAreaId, setWindPickAreaId] = useState<string | null>(null);
   /** ± degrees around each area’s saved optimal for full direction multiplier before taper. */
   const [optimalWindHalfWidthDeg, setOptimalWindHalfWidthDeg] = useState(30);
   const [sectorHalfWidthDeg, setSectorHalfWidthDeg] = useState(45);
@@ -145,6 +121,41 @@ export function MapHub() {
     collapseCurrentTab: collapseCurrentTabSections,
     expandAll: expandAllToolSections,
   } = useToolSections(sidebarTab);
+
+  const {
+    mapMode,
+    drawRing,
+    setDrawRing,
+    drawAreaName,
+    setDrawAreaName,
+    editingAreaId,
+    windPickStart,
+    setWindPickStart,
+    windPickHover,
+    setWindPickHover,
+    windPickAreaId,
+    setWindPickAreaId,
+    setMapMode,
+    startDrawing,
+    undoDrawPoint,
+    cancelDrawing,
+    finishDrawing,
+    beginPickWindForArea,
+    cancelPickWind,
+    startBoundaryEdit,
+  } = useMapInteractionMode({
+    isAuthed,
+    sessionPending,
+    activeSport,
+    setMessage: setMsg,
+    setLoading,
+    loadBundle,
+    loadRank,
+    clearTerrain,
+    setSidebarTab,
+    openToolSection,
+    setSelectedPracticeAreaId,
+  });
 
   /** Avoid SSR/client mismatch for `datetime-local` default and similar. */
   const [clientReady, setClientReady] = useState(false);
@@ -223,117 +234,6 @@ export function MapHub() {
     ensureWindFieldArrowImage(map);
   }, [mapEpoch, windFieldFeatureCount, mapStyle]);
 
-  useEffect(() => {
-    if (mapMode === "draw") {
-      setSidebarTab("you");
-      openToolSection("draw");
-    }
-  }, [mapMode, setSidebarTab, openToolSection]);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      if (mapMode === "pickWind") {
-        setWindPickStart(null);
-        setWindPickHover(null);
-        setWindPickAreaId(null);
-        setMapMode("browse");
-        return;
-      }
-      if (mapMode === "draw") {
-        setDrawRing([]);
-        setMapMode("browse");
-        setEditingAreaId(null);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [mapMode]);
-
-  const beginPickWindForArea = useCallback(
-    (id: string) => {
-      if (mapMode === "draw") {
-        setMsg("Finish or cancel area drawing first.");
-        setSidebarTab("you");
-        openToolSection("draw");
-        return;
-      }
-      setWindPickAreaId(id);
-      setWindPickStart(null);
-      setWindPickHover(null);
-      clearTerrain();
-      setMapMode("pickWind");
-      setSidebarTab("plan");
-      openToolSection("windRank");
-      setMsg("Area optimal: click arrow tail, then head (downwind). Esc = cancel.");
-    },
-    [mapMode, setSidebarTab, openToolSection, clearTerrain],
-  );
-
-  const cancelPickWind = useCallback(() => {
-    setWindPickAreaId(null);
-    setWindPickStart(null);
-    setWindPickHover(null);
-    setMapMode("browse");
-  }, []);
-
-  async function savePracticeArea(
-    poly: GeoJSON.Polygon,
-    windSectors?: [number, number][],
-    nameOverride?: string,
-  ) {
-    setLoading(true);
-    setMsg(null);
-    try {
-      const nameRaw = (nameOverride ?? drawAreaName).trim() || "Untitled area";
-      await createPracticeArea({
-        geojson: poly,
-        sports: [activeSport],
-        labelPreset: "other",
-        name: nameRaw.slice(0, 120),
-        ...(windSectors?.length ? { windSectors } : {}),
-      });
-      await loadBundle();
-      await loadRank();
-      setDrawAreaName("");
-      setMsg("Area saved.");
-    } catch (e) {
-      setMsg(e instanceof Error ? e.message : "Save failed");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function finishDrawing() {
-    const poly = closePolygonCoordinates(drawRing);
-    if (!poly) {
-      setMsg("Need at least 3 points. Click the map to add corners, then Finish.");
-      return;
-    }
-    const editTarget = editingAreaId;
-    setDrawRing([]);
-    setMapMode("browse");
-    setEditingAreaId(null);
-    if (editTarget) {
-      void (async () => {
-        setLoading(true);
-        setMsg(null);
-        try {
-          await patchPracticeArea(editTarget, { geojson: poly });
-          await loadBundle();
-          await loadRank();
-          setMsg("Boundary updated.");
-        } catch (e) {
-          setMsg(e instanceof Error ? e.message : "Update failed");
-        } finally {
-          setLoading(false);
-        }
-      })();
-      return;
-    }
-    void savePracticeArea(poly, undefined);
-  }
-
   const { windRankSummary, forecastSummary, scoringSummaryCollapsed } =
     useSidebarSummaries({
       isAuthed,
@@ -346,26 +246,6 @@ export function MapHub() {
       hoursAhead,
       rankedCount: ranked.length,
     });
-
-  const startDrawing = useCallback(() => {
-    setWindPickStart(null);
-    setWindPickHover(null);
-    setWindPickAreaId(null);
-    setDrawRing([]);
-    setEditingAreaId(null);
-    setMapMode("draw");
-    clearTerrain();
-  }, [clearTerrain]);
-
-  const undoDrawPoint = useCallback(() => {
-    setDrawRing((r) => r.slice(0, -1));
-  }, []);
-
-  const cancelDrawing = useCallback(() => {
-    setDrawRing([]);
-    setMapMode("browse");
-    setEditingAreaId(null);
-  }, []);
 
   const {
     onMapLoad: handleMapLoad,
@@ -474,7 +354,7 @@ export function MapHub() {
                 setDrawAreaName={setDrawAreaName}
                 drawRing={drawRing}
                 onStartDrawing={startDrawing}
-                onFinishDrawing={() => void finishDrawing()}
+                onFinishDrawing={finishDrawing}
                 onUndoDrawPoint={undoDrawPoint}
                 onCancelDrawing={cancelDrawing}
                 experiences={experiences}
@@ -558,14 +438,9 @@ export function MapHub() {
             await loadExperiences();
             await loadRank();
           }}
-          onStartBoundaryEdit={(poly) => {
-            setEditingAreaId(selectedPracticeAreaId);
-            setDrawRing(outerRingOpenCoords(poly));
-            setMapMode("draw");
-            setSelectedPracticeAreaId(null);
-            clearTerrain();
-            setMsg("Adjust corners, then Finish & save.");
-          }}
+          onStartBoundaryEdit={(poly) =>
+            startBoundaryEdit(poly, selectedPracticeAreaId)
+          }
         />
       ) : null}
     </div>
