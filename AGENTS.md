@@ -64,7 +64,10 @@ Imports use the **`@/*`** alias → `src/*` (see `tsconfig.json`).
 ## TypeScript, ESLint, styling
 
 - **TypeScript**: `strict` mode; prefer explicit types at boundaries (API payloads, Prisma results you reshape).
-- **ESLint**: flat config in **`eslint.config.mjs`** (`eslint-config-next` core-web-vitals + TypeScript). **`npm run lint`**. Generated client under `src/generated/prisma/**` is ignored — fix issues in `prisma/schema` or app code, not generated files.
+- **ESLint**: flat config in **`eslint.config.mjs`** (`eslint-config-next` core-web-vitals + TypeScript + `eslint-plugin-react-hooks`). **`npm run lint`**. Generated client under `src/generated/prisma/**` is ignored — fix issues in `prisma/schema` or app code, not generated files.
+- **Hard rules (not warnings)**: `@typescript-eslint/no-unused-vars`, `@typescript-eslint/no-unused-expressions`, `react-hooks/rules-of-hooks`, `react-hooks/exhaustive-deps`. Prefix intentionally-unused parameters with `_`.
+- **Size caps (errors, application code only)**: `max-lines` 600 per file, `max-lines-per-function` 400. If a function is creeping toward the cap, extract a hook into `src/components/map-hub/hooks/` or a pure helper into `src/lib/` rather than raising the limit. Tests under `tests/**` and `e2e/**` are exempt from both caps.
+- **Dead-code & cycles**: `npm run audit:dead` (Knip — unused files/exports/dependencies, also wired into CI) and `npm run audit:cycles` (Madge — import cycles in `src/`). Run these when you finish a feature so the report stays clean.
 - **Tailwind CSS v4** with PostCSS; global styles in **`src/app/globals.css`**. Follow existing utility and layout patterns on nearby pages.
 
 ## npm scripts (common)
@@ -78,6 +81,8 @@ Imports use the **`@/*`** alias → `src/*` (see `tsconfig.json`).
 | `npm run db:migrate` / `npm run db:dev` | Prisma migrate deploy / dev migrate |
 | `npm run test` / `npm run test:watch` / `npm run test:coverage` | Vitest |
 | `npm run test:e2e` | Playwright (Chromium); `playwright:install` for browsers |
+| `npm run audit:dead` | Knip — unused files, exports, dependencies (also runs in CI) |
+| `npm run audit:cycles` | Madge — circular import detector for `src/` |
 
 ## Testing
 
@@ -97,8 +102,22 @@ Imports use the **`@/*`** alias → `src/*` (see `tsconfig.json`).
 
 ## API, auth, and server boundaries
 
-- Prefer **Route Handlers** in `src/app/api/` for JSON APIs; validate input (e.g. **Zod**) consistently with existing routes.
+- Prefer **Route Handlers** in `src/app/api/` for JSON APIs; validate input with **Zod**. Domain-specific schemas live next to their domain (e.g. `src/lib/practiceArea/schema.ts`). Keep route files thin — parse → query/mutate → return.
+- Use the shared helpers in `src/lib/api/` instead of rolling your own:
+  - `requireUserSession` and `isErrorResponse` (`handler.ts`) — auth gate that returns a 401 `NextResponse` you forward unchanged.
+  - `parseJsonBody(req, schema)` (`handler.ts`) — Zod-validated body parsing that returns either the parsed value or a 400 response.
+  - `parseSportParam` / `parseAtParam` / `parseOptimalWindHalfWidthDegParam` (`forecastQuery.ts`) — common forecast query-string parsers shared across forecast routes.
 - Session/auth through **Auth.js** (`src/auth.ts`, `src/app/api/auth/[...nextauth]/route.ts`). Respect existing patterns for protected data (Prisma queries scoped by user where applicable).
+
+## Project conventions (preserve these)
+
+The codebase has been deliberately reshaped around a few patterns; keep new work consistent with them.
+
+- **`src/components/MapHub.tsx` is an orchestrator, not a god component.** Heavy state and effects belong in dedicated hooks under `src/components/map-hub/hooks/` (`useMapBundle`, `useForecastRanking`, `useMapInteractionMode`, etc.). Pure rendering of a sub-region belongs in its own component under `src/components/map-hub/`. The orchestrator should mostly be hook calls + JSX.
+- **Pure logic lives in `src/lib/`** (geo helpers, ranking heuristics, wind formatting, schema validation, API clients). Each module is testable in Node and is the place to add new unit coverage. Prefer small, single-purpose files — split when a module grows past a couple of clearly different concerns.
+- **API client modules live in `src/lib/<domain>/client.ts`** and are the only place components call `fetch` for backend routes. Tests mock `fetch` against these modules instead of mocking it inside components.
+- **Sidebar UX** uses `CollapsibleSection` with `summary` text so collapsed sections still convey state. New sidebar content should follow the existing tab/section pattern (`PlanTab`, `MapTab`, `YouTab`).
+- **No `as any`** in application code; use proper types or a Zod-validated boundary instead.
 
 ## Maps and weather
 
