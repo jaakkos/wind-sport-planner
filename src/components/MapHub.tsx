@@ -12,7 +12,7 @@ import MapGL, {
   NavigationControl,
   Source,
 } from "react-map-gl/maplibre";
-import type { Feature, FeatureCollection } from "geojson";
+import type { FeatureCollection } from "geojson";
 import { type SidebarTab } from "@/components/map-hub/constants";
 import { useSidebarTab } from "@/components/map-hub/hooks/useSidebarTab";
 import { useMapLayerToggles } from "@/components/map-hub/hooks/useMapLayerToggles";
@@ -65,10 +65,8 @@ import {
 } from "@/lib/map/windFormat";
 import {
   areaFeatureId,
-  bearingDeg,
   closePolygonCoordinates,
   haversineKm,
-  kmToScreenPx,
   outerRingOpenCoords,
 } from "@/lib/map/polygons";
 import {
@@ -79,6 +77,12 @@ import {
   buildYrForecastPoints,
   selectedAreaOptimalWindMarker,
 } from "@/lib/map/areaLayers";
+import {
+  buildDrawPreview,
+  buildWindPickPreview,
+  optimalWindMarkerLengthPx,
+  windPickArrowLengthPx,
+} from "@/lib/map/interactionLayers";
 import {
   createPracticeArea,
   patchPracticeArea,
@@ -323,65 +327,22 @@ export function MapHub() {
     setMapMode("browse");
   }, []);
 
-  const windPickPreview = useMemo(():
-    | { kind: "dot"; lng: number; lat: number }
-    | { kind: "arrow"; tailLng: number; tailLat: number; windToDeg: number; distKm: number }
-    | null => {
-    if (mapMode !== "pickWind" || windPickStart == null) return null;
-    const [sx, sy] = windPickStart;
-    const hx = windPickHover?.[0] ?? sx;
-    const hy = windPickHover?.[1] ?? sy;
-    const distKm = haversineKm(sx, sy, hx, hy);
-    if (distKm < 0.004) return { kind: "dot", lng: sx, lat: sy };
-    const windTo = bearingDeg(sx, sy, hx, hy);
-    return { kind: "arrow", tailLng: sx, tailLat: sy, windToDeg: windTo, distKm };
-  }, [mapMode, windPickStart, windPickHover]);
+  const windPickPreview = useMemo(
+    () => buildWindPickPreview({ mapMode, windPickStart, windPickHover }),
+    [mapMode, windPickStart, windPickHover],
+  );
 
-  const optimalWindLenPx = useMemo(() => {
-    if (!selectedOptimalWindMarker) return 0;
-    const px = kmToScreenPx(
-      selectedOptimalWindMarker.lenKm,
-      selectedOptimalWindMarker.lat,
-      mapZoom,
-    );
-    return Math.min(160, Math.max(28, px));
-  }, [selectedOptimalWindMarker, mapZoom]);
+  const optimalWindLenPx = useMemo(
+    () => optimalWindMarkerLengthPx(selectedOptimalWindMarker, mapZoom),
+    [selectedOptimalWindMarker, mapZoom],
+  );
 
-  const windPickArrowLenPx = useMemo(() => {
-    if (!windPickPreview || windPickPreview.kind !== "arrow") return 0;
-    const px = kmToScreenPx(
-      windPickPreview.distKm,
-      windPickPreview.tailLat,
-      mapZoom,
-    );
-    return Math.min(420, Math.max(12, px));
-  }, [windPickPreview, mapZoom]);
+  const windPickArrowLenPx = useMemo(
+    () => windPickArrowLengthPx(windPickPreview, mapZoom),
+    [windPickPreview, mapZoom],
+  );
 
-  const drawPreview = useMemo((): FeatureCollection | null => {
-    if (drawRing.length === 0) return null;
-    const features: Feature[] = [];
-    features.push({
-      type: "Feature",
-      properties: { kind: "vertices" },
-      geometry: { type: "MultiPoint", coordinates: drawRing },
-    });
-    if (drawRing.length >= 2) {
-      features.push({
-        type: "Feature",
-        properties: { kind: "path" },
-        geometry: { type: "LineString", coordinates: drawRing },
-      });
-      features.push({
-        type: "Feature",
-        properties: { kind: "close" },
-        geometry: {
-          type: "LineString",
-          coordinates: [drawRing[drawRing.length - 1]!, drawRing[0]!],
-        },
-      });
-    }
-    return { type: "FeatureCollection", features };
-  }, [drawRing]);
+  const drawPreview = useMemo(() => buildDrawPreview(drawRing), [drawRing]);
 
   async function savePracticeArea(
     poly: GeoJSON.Polygon,
