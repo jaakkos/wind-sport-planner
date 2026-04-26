@@ -10,7 +10,7 @@ const providers: WeatherProvider[] = [metNoProvider, openMeteoProvider].sort(
   (a, b) => a.priority - b.priority,
 );
 
-export function providersForPoint(lat: number, lng: number, at: Date) {
+function providersForPoint(lat: number, lng: number, at: Date) {
   return providers.filter((p) => p.supports(lat, lng, at));
 }
 

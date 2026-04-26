@@ -3,10 +3,10 @@
 import { type ReactNode, useEffect, useState } from "react";
 
 /** Default storage key for Plan “How ranking & map work” disclosure. */
-export const MAP_HUB_HELP_STORAGE_KEY = "mapHub.helpRankingExpanded";
+const MAP_HUB_HELP_STORAGE_KEY = "mapHub.helpRankingExpanded";
 
 /** Same-tab signal to open the help disclosure (e.g. from map legend). */
-export const MAP_HUB_EXPAND_HELP_EVENT = "fjelllift:expandMapHelp";
+const MAP_HUB_EXPAND_HELP_EVENT = "fjelllift:expandMapHelp";
 
 export function requestExpandMapHelp(): void {
   try {

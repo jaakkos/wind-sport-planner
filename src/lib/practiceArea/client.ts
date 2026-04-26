@@ -4,9 +4,9 @@
  * callers can surface it to the user.
  */
 
-export type WindSectorTuple = readonly [number, number];
+type WindSectorTuple = readonly [number, number];
 
-export type PracticeAreaCreatePayload = {
+type PracticeAreaCreatePayload = {
   geojson: GeoJSON.Polygon;
   sports: string[];
   labelPreset: string;

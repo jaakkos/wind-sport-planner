@@ -14,7 +14,7 @@ export type NormalizedWind = {
   isObservation?: boolean;
 };
 
-export type WeatherProviderId = string;
+type WeatherProviderId = string;
 
 /** Options for forecast fetches (terrain-aware providers). */
 export type ForecastFetchOptions = {

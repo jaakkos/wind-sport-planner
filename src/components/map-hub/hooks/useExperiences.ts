@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-export type ExperienceRow = {
+type ExperienceRow = {
   id: string;
   practiceAreaId: string;
   practiceAreaName: string;

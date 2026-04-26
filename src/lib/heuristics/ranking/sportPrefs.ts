@@ -30,7 +30,7 @@ function clamp(n: number, lo: number, hi: number): number {
 }
 
 /** Merge saved prefs with defaults into bands safe for scoring. */
-export function resolveBands(sport: Sport, prefs: SportRankingPrefs | undefined): WindBands {
+function resolveBands(sport: Sport, prefs: SportRankingPrefs | undefined): WindBands {
   const b = WIND_BANDS[sport];
   if (!prefs) return b;
   let minMs = prefs.minWindMs ?? b.minMs;

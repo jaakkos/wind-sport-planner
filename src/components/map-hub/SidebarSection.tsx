@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 /** Card shell shared by sidebar sections (see docs/ui-roadmap §5.2). */
-export function sidebarSectionShellClass(variant: "default" | "accent" = "default"): string {
+function sidebarSectionShellClass(variant: "default" | "accent" = "default"): string {
   return variant === "accent"
     ? "rounded-2xl bg-app-surface-muted ring-1 ring-app-border shadow-[var(--app-shadow-hub)]"
     : "rounded-2xl bg-app-surface-raised/85 ring-1 ring-app-border shadow-[var(--app-shadow-hub)]";
@@ -27,7 +27,7 @@ type SidebarSectionStatic = {
   collapsible?: false;
 };
 
-export type SidebarSectionProps = SidebarSectionCollapsible | SidebarSectionStatic;
+type SidebarSectionProps = SidebarSectionCollapsible | SidebarSectionStatic;
 
 /**
  * Roadmap §5.2 — title + optional chevron (when collapsible) + body.

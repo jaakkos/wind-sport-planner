@@ -30,7 +30,7 @@ import {
 } from "@/lib/heuristics/ranking/sportPrefs";
 import { gustPenalty, windFitScore } from "@/lib/heuristics/profiles";
 
-export type { RankedPracticeArea, RankedPracticeAreaWind } from "@/lib/heuristics/rankAreaTypes";
+export type { RankedPracticeArea } from "@/lib/heuristics/rankAreaTypes";
 
 function asPolygon(geojson: unknown): Polygon | null {
   if (!geojson || typeof geojson !== "object") return null;

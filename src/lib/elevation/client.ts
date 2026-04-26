@@ -4,7 +4,7 @@
  * have to repeat the boilerplate.
  */
 
-export type ElevationResult = {
+type ElevationResult = {
   elevationM: number | null;
 };
 

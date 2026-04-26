@@ -56,7 +56,7 @@ export function bearingDeg(lngA: number, latA: number, lngB: number, latB: numbe
 }
 
 /** Web Mercator meters per pixel at latitude (MapLibre 512 px world width). */
-export function metersPerPixelAtLatitude(latDeg: number, zoom: number): number {
+function metersPerPixelAtLatitude(latDeg: number, zoom: number): number {
   const cosLat = Math.cos((latDeg * Math.PI) / 180);
   return (40075016.686 * Math.max(cosLat, 0.02)) / (512 * Math.pow(2, zoom));
 }
@@ -65,8 +65,8 @@ export function kmToScreenPx(km: number, latDeg: number, zoom: number): number {
   return (km * 1000) / metersPerPixelAtLatitude(latDeg, zoom);
 }
 
-/** Grid resolution for {@link sampleWindFieldGridCandidates} / {@link sampleWindFieldOrigins}. */
-export function windFieldGridNForDensityHint(densityHint: number): number {
+/** Grid resolution for {@link sampleWindFieldGridCandidates}. */
+function windFieldGridNForDensityHint(densityHint: number): number {
   return Math.min(32, Math.max(10, Math.ceil(Math.sqrt(densityHint * 3.2))));
 }
 
@@ -102,32 +102,6 @@ export function sampleWindFieldGridCandidates(
   }
   if (candidates.length === 0) return [[centroidLng, centroidLat]];
   return candidates;
-}
-
-/**
- * Evenly subsample grid candidates (legacy map arrows / small pools).
- * Prefer {@link resolveWindForecastSamplePoints} for server-side forecast samples when using multiple points.
- */
-export function sampleWindFieldOrigins(
-  poly: GeoJSON.Polygon,
-  centroidLng: number,
-  centroidLat: number,
-  maxPoints: number,
-): [number, number][] {
-  const candidates = sampleWindFieldGridCandidates(
-    poly,
-    centroidLng,
-    centroidLat,
-    maxPoints,
-  );
-  if (candidates.length <= maxPoints) return candidates;
-  const out: [number, number][] = [];
-  const denom = Math.max(1, maxPoints - 1);
-  for (let k = 0; k < maxPoints; k++) {
-    const idx = Math.round((k / denom) * (candidates.length - 1));
-    out.push(candidates[idx]!);
-  }
-  return out;
 }
 
 /**

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export type SportRankingFormState = {
+type SportRankingFormState = {
   minWindMs: number;
   maxWindMs: number;
   idealMinMs: number;
@@ -18,7 +18,7 @@ export type MultiPointForecastFormState = {
   scoringPolicy: "representative" | "conservative";
 };
 
-export type RankingPrefsApiResponse = {
+type RankingPrefsApiResponse = {
   doc: {
     kiteski?: Partial<SportRankingFormState>;
     kitesurf?: Partial<SportRankingFormState>;
@@ -33,7 +33,7 @@ export type RankingPrefsApiResponse = {
   multiPointForecast: MultiPointForecastFormState;
 };
 
-export type RankingForm = {
+type RankingForm = {
   kiteski: SportRankingFormState;
   kitesurf: SportRankingFormState;
 };

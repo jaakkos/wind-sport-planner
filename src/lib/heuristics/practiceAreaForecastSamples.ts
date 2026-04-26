@@ -41,7 +41,7 @@ function forecastFetchWindow(at: Date): { from: Date; to: Date } {
   return { from, to };
 }
 
-export type PracticeAreaForecastSampleSpot = {
+type PracticeAreaForecastSampleSpot = {
   lat: number;
   lng: number;
   elevationM: number | null;
@@ -54,7 +54,7 @@ export type PracticeAreaForecastSampleSpot = {
   } | null;
 };
 
-export type PracticeAreaForecastSamplesResult = {
+type PracticeAreaForecastSamplesResult = {
   at: string;
   sport: Sport;
   areaId: string;

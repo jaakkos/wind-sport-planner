@@ -11,7 +11,7 @@ export const multiPointForecastPrefsSchema = z
   })
   .strict();
 
-export type MultiPointForecastPrefs = z.infer<typeof multiPointForecastPrefsSchema>;
+type MultiPointForecastPrefs = z.infer<typeof multiPointForecastPrefsSchema>;
 export type MultiPointForecastMode = NonNullable<MultiPointForecastPrefs["mode"]>;
 export type MultiPointScoringPolicy = NonNullable<MultiPointForecastPrefs["scoringPolicy"]>;
 

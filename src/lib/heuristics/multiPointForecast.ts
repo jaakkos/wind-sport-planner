@@ -115,7 +115,7 @@ export function pickHourClosestTo(
   return best;
 }
 
-export type AggregatedMultiPointWind = {
+type AggregatedMultiPointWind = {
   /** Shown in UI: median speed, max gust among samples, mean direction. */
   display: NormalizedWind;
   /** Speed used for windFitScore (median or min). */

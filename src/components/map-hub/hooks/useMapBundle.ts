@@ -3,7 +3,7 @@
 import type { FeatureCollection } from "geojson";
 import { useCallback, useEffect, useState } from "react";
 
-export type MapBundle = {
+type MapBundle = {
   activeSport: string;
   practiceAreas: FeatureCollection;
 };

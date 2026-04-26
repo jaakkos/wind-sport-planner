@@ -9,7 +9,7 @@ export type MapLayerTogglesState = {
   areaLabels: boolean;
 };
 
-export const MAP_LAYER_TOGGLES_STORAGE_KEY = "mapHub.layerOverlays";
+const MAP_LAYER_TOGGLES_STORAGE_KEY = "mapHub.layerOverlays";
 
 export function defaultMapLayerToggles(): MapLayerTogglesState {
   return {

@@ -2,7 +2,7 @@
  * Meteorological convention: degrees clockwise from N (0–360), direction wind comes **from**.
  */
 
-export type WindSector = readonly [number, number];
+type WindSector = readonly [number, number];
 
 /** Smallest difference between two bearings, in [0, 180]. */
 export function angularDiffDeg(a: number, b: number): number {

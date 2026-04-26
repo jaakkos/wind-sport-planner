@@ -4,7 +4,7 @@
  * present so callers can surface it to the user verbatim.
  */
 
-export type CreateExperiencePayload = {
+type CreateExperiencePayload = {
   practiceAreaId: string;
   sport: string;
   occurredAt: string;

@@ -11,7 +11,7 @@ import { bearingDeg, haversineKm, kmToScreenPx } from "@/lib/map/polygons";
  * step independently of the React tree.
  */
 
-export type WindPickPreview =
+type WindPickPreview =
   | { kind: "dot"; lng: number; lat: number }
   | {
       kind: "arrow";

@@ -1,5 +1,5 @@
 /** Present when forecast used several locations inside the practice polygon. */
-export type RankedPracticeAreaWindMultiPoint = {
+type RankedPracticeAreaWindMultiPoint = {
   samples: number;
   speedMinMs: number | null;
   speedMaxMs: number | null;
