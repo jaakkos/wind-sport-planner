@@ -24,7 +24,6 @@ import { useTerrainProbe } from "@/components/map-hub/hooks/useTerrainProbe";
 import { CollapsibleSection } from "@/components/map-hub/CollapsibleSection";
 import { HelpDisclosure, PersistedCollapsible } from "@/components/map-hub/MapHubDisclosures";
 import { ForecastTimeControl } from "@/components/map-hub/ForecastTimeControl";
-import { MapLayerOverlaysSection } from "@/components/map-hub/MapLayerOverlaysSection";
 import { MapHubLegend } from "@/components/map-hub/MapHubLegend";
 import { TerrainClickPanel } from "@/components/map-hub/TerrainClickPanel";
 import { RankedAreaRow } from "@/components/map-hub/RankedAreaRow";
@@ -32,6 +31,7 @@ import { RankedListSkeleton, ScoringPrefsSkeleton } from "@/components/map-hub/h
 import { hubOverlayZ } from "@/components/map-hub/mapHubOverlayZ";
 import { PracticeAreaEditPanel } from "@/components/map-hub/PracticeAreaEditPanel";
 import { MapCanvas } from "@/components/map-hub/map/MapCanvas";
+import { MapTab } from "@/components/map-hub/sidebar/MapTab";
 import {
   hubBtnPrimary,
   hubBtnSecondary,
@@ -40,7 +40,6 @@ import {
   hubKbd,
   hubListRow,
 } from "@/components/map-hub/hubUi";
-import { type BasemapId } from "@/lib/map/styles";
 import { useBasemap } from "@/components/map-hub/hooks/useBasemap";
 import type { RankedPracticeArea } from "@/lib/heuristics/rankAreaTypes";
 import { yrNoHourlyTableUrlEn } from "@/lib/yrNoUrls";
@@ -1074,54 +1073,21 @@ export function MapHub() {
               </>
             )}
             {sidebarTab === "map" && (
-              <>
-        <CollapsibleSection
-          title="Basemap"
-          summary={basemapSummary}
-          open={toolSectionsOpen.basemap}
-          onToggle={() => toggleToolSection("basemap")}
-        >
-          <label className="flex flex-col gap-1">
-            <select
-              value={basemap}
-              onChange={(e) => setBasemap(e.target.value as BasemapId)}
-              className="w-full rounded-xl border border-app-border-subtle bg-app-surface px-3 py-2 text-sm text-app-fg focus:border-app-accent focus:outline-none focus:ring-2 focus:ring-app-accent/20"
-            >
-              <option value="hybrid">Hybrid — OSM detail + topo relief &amp; contours</option>
-              <option value="osm">OSM — maximum road/path detail</option>
-              <option value="topo">Topo — contours &amp; terrain (OpenTopoMap)</option>
-              <option value="satellite">Satellite — tree cover vs clearings (Esri)</option>
-              {hasMaptilerKey ? (
-                <option value="maptiler_outdoor">MapTiler Outdoor (API key)</option>
-              ) : null}
-            </select>
-            <p className="text-[11px] leading-snug text-app-fg-subtle">
-              <strong>Height:</strong> click the map for elevation (Open-Meteo).{" "}
-              <strong>Forest / openness:</strong> use <em>Topo</em> or <em>Hybrid</em> for wooded
-              shading and relief; <em>Satellite</em> shows tree cover visually.
-            </p>
-          </label>
-          {(basemap === "hybrid" || (basemap === "maptiler_outdoor" && !hasMaptilerKey)) && (
-            <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-app-fg-muted">Topo overlay strength</span>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={Math.round(reliefOpacity * 100)}
-                onChange={(e) => setReliefOpacity(Number(e.target.value) / 100)}
-                className="w-full accent-app-accent"
+              <MapTab
+                basemap={basemap}
+                setBasemap={setBasemap}
+                basemapSummary={basemapSummary}
+                hasMaptilerKey={hasMaptilerKey}
+                reliefOpacity={reliefOpacity}
+                setReliefOpacity={setReliefOpacity}
+                mapLayerToggles={mapLayerToggles}
+                onPatchMapLayerToggles={patchMapLayerToggles}
+                toolSectionsOpen={{
+                  basemap: toolSectionsOpen.basemap,
+                  overlays: toolSectionsOpen.overlays,
+                }}
+                toggleToolSection={toggleToolSection}
               />
-            </label>
-          )}
-        </CollapsibleSection>
-        <MapLayerOverlaysSection
-          toolSectionsOpen={{ overlays: toolSectionsOpen.overlays }}
-          toggleToolSection={toggleToolSection}
-          mapLayerToggles={mapLayerToggles}
-          onPatchMapLayerToggles={patchMapLayerToggles}
-        />
-              </>
             )}
             {sidebarTab === "you" && (
               <>
