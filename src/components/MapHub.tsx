@@ -28,6 +28,7 @@ import { useForecastTime } from "@/components/map-hub/hooks/useForecastTime";
 import { useToolSections } from "@/components/map-hub/hooks/useToolSections";
 import { useFitMapToPracticeAreas } from "@/components/map-hub/hooks/useFitMapToPracticeAreas";
 import { useTerrainPopoverPosition } from "@/components/map-hub/hooks/useTerrainPopoverPosition";
+import { useTerrainProbe } from "@/components/map-hub/hooks/useTerrainProbe";
 import { CollapsibleSection } from "@/components/map-hub/CollapsibleSection";
 import { HelpDisclosure, PersistedCollapsible } from "@/components/map-hub/MapHubDisclosures";
 import { ForecastTimeControl } from "@/components/map-hub/ForecastTimeControl";
@@ -95,14 +96,6 @@ import {
   WIND_MAP_ARROW_MAX_SAMPLES_SETTING,
 } from "@/lib/heuristics/windSamplePoints";
 
-type ClickTerrain = {
-  lat: number;
-  lng: number;
-  elevationM: number | null;
-  loading: boolean;
-  error?: string;
-};
-
 export function MapHub() {
   const { status } = useSession();
   const isAuthed = status === "authenticated";
@@ -149,7 +142,11 @@ export function MapHub() {
   const [editingAreaId, setEditingAreaId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const [terrainClick, setTerrainClick] = useState<ClickTerrain | null>(null);
+  const {
+    terrain: terrainClick,
+    probe: probeTerrain,
+    clear: clearTerrain,
+  } = useTerrainProbe();
   const [mapMode, setMapMode] = useState<"browse" | "draw" | "pickWind">("browse");
   const [drawRing, setDrawRing] = useState<[number, number][]>([]);
   const [drawAreaName, setDrawAreaName] = useState("");
@@ -235,8 +232,8 @@ export function MapHub() {
       });
     }
     setSelectedPracticeAreaId(r.areaId);
-    setTerrainClick(null);
-  }, []);
+    clearTerrain();
+  }, [clearTerrain]);
 
   useFitMapToPracticeAreas({
     mapRef,
@@ -452,13 +449,13 @@ export function MapHub() {
       setWindPickAreaId(id);
       setWindPickStart(null);
       setWindPickHover(null);
-      setTerrainClick(null);
+      clearTerrain();
       setMapMode("pickWind");
       setSidebarTab("plan");
       openToolSection("windRank");
       setMsg("Area optimal: click arrow tail, then head (downwind). Esc = cancel.");
     },
-    [mapMode, setSidebarTab, openToolSection],
+    [mapMode, setSidebarTab, openToolSection, clearTerrain],
   );
 
   const cancelPickWind = useCallback(() => {
@@ -1242,7 +1239,7 @@ export function MapHub() {
                       setDrawRing([]);
                       setEditingAreaId(null);
                       setMapMode("draw");
-                      setTerrainClick(null);
+                      clearTerrain();
                     }}
                   >
                     Start drawing
@@ -1548,7 +1545,7 @@ export function MapHub() {
       {terrainClick && terrainPopoverPos ? (
         <TerrainClickPanel
           terrain={terrainClick}
-          onClose={() => setTerrainClick(null)}
+          onClose={clearTerrain}
           style={{
             left: terrainPopoverPos.left,
             top: terrainPopoverPos.top,
@@ -1674,7 +1671,7 @@ export function MapHub() {
             typeof (areaHit.properties as { id?: string }).id === "string"
           ) {
             setSelectedPracticeAreaId(String((areaHit.properties as { id: string }).id));
-            setTerrainClick(null);
+            clearTerrain();
             return;
           }
           if (e.originalEvent.shiftKey) {
@@ -1683,36 +1680,7 @@ export function MapHub() {
             return;
           }
           const { lng, lat } = e.lngLat;
-          setTerrainClick({ lat, lng, elevationM: null, loading: true });
-          void fetch(`/api/elevation?lat=${lat}&lng=${lng}`)
-            .then(async (r) => {
-              const j = (await r.json()) as { elevationM?: number; error?: string };
-              if (!r.ok) {
-                setTerrainClick({
-                  lat,
-                  lng,
-                  elevationM: null,
-                  loading: false,
-                  error: j.error ?? r.statusText,
-                });
-                return;
-              }
-              setTerrainClick({
-                lat,
-                lng,
-                elevationM: j.elevationM ?? null,
-                loading: false,
-              });
-            })
-            .catch(() => {
-              setTerrainClick({
-                lat,
-                lng,
-                elevationM: null,
-                loading: false,
-                error: "Network error",
-              });
-            });
+          probeTerrain(lat, lng);
         }}
       >
         <NavigationControl position="bottom-right" showCompass visualizePitch />
@@ -2143,7 +2111,7 @@ export function MapHub() {
             setDrawRing(outerRingOpenCoords(poly));
             setMapMode("draw");
             setSelectedPracticeAreaId(null);
-            setTerrainClick(null);
+            clearTerrain();
             setMsg("Adjust corners, then Finish & save.");
           }}
         />
