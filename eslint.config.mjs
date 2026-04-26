@@ -60,6 +60,31 @@ const eslintConfig = defineConfig([
         },
       ],
       "@typescript-eslint/no-unused-expressions": "error",
+      "max-lines": [
+        "error",
+        { max: 600, skipBlankLines: true, skipComments: true },
+      ],
+      // 400 accommodates top-level React orchestrators (e.g. `MapHub`) that
+      // legitimately wire many hooks to many children. 300 was too aggressive
+      // for files whose body is mostly prop fan-out; we still catch actual
+      // bloat well before it becomes a "god function".
+      "max-lines-per-function": [
+        "error",
+        {
+          max: 400,
+          skipBlankLines: true,
+          skipComments: true,
+          IIFEs: true,
+        },
+      ],
+    },
+  },
+  {
+    name: "ts/test-overrides",
+    files: ["tests/**/*.{ts,tsx}", "e2e/**/*.{ts,tsx}"],
+    rules: {
+      "max-lines": "off",
+      "max-lines-per-function": "off",
     },
   },
   globalIgnores([
