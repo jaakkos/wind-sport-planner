@@ -120,9 +120,9 @@ Priority order:
 
 ### Phase A — Information architecture (high ROI, ~2–4 days)
 
-- [ ] Move long Plan instructions into **HelpDisclosure**; default collapsed; `localStorage` key `mapHub.helpRankingExpanded`.
-- [ ] Add **one-line** forecast context above ranked list (time + short source hint).
-- [ ] Restructure **Edit panel** into Basics / Wind / Forecast samples (accordion or tabs); samples **collapsed** by default.
+- [x] Move long Plan instructions into **HelpDisclosure**; default collapsed; `localStorage` key `mapHub.helpRankingExpanded`. (`MapHubDisclosures.tsx`, used by `PlanTab`.)
+- [x] Add **one-line** forecast context above ranked list (time + short source hint). (`useSidebarSummaries.forecastSummary` rendered in `PlanTab`.)
+- [x] Restructure **Edit panel** into Basics / Wind / Forecast samples (accordion or tabs); samples **collapsed** by default. (`practice-area-edit/{BasicsSection,WindSection}.tsx` + `PersistedCollapsible` with key `mapHub.editForecastSamplesExpanded`.)
 
 ### Phase B — Visual hierarchy (~2–3 days)
 
@@ -132,8 +132,8 @@ Priority order:
 
 ### Phase C — Map legend + focus (~1–2 days)
 
-- [ ] Add dismissible legend component; store dismissed state if desired.
-- [ ] Review z-index stack: terrain popover vs edit vs modals.
+- [x] Add dismissible legend component; store dismissed state if desired. (`MapHubLegend.tsx`.)
+- [x] Review z-index stack: terrain popover vs edit vs modals. (`mapHubOverlayZ.ts` — single source for overlay z-indexes; `MapHubLegend` accepts `avoidEditPanelOverlap`.)
 
 ### Phase D — Loading & polish (~1–2 days)
 
@@ -179,4 +179,4 @@ Priority order:
 
 ---
 
-*Last updated: April 2026 — Phase F overlays + `/help` shipped; Storybook deferred.*
+*Last updated: April 2026 — Phase A (HelpDisclosure, forecast context, Edit panel split) and Phase C (legend, overlay z-index) shipped; Phases B/D/E remain.*
