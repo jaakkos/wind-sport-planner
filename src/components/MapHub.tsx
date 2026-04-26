@@ -46,11 +46,8 @@ import {
   hubKbd,
   hubListRow,
 } from "@/components/map-hub/hubUi";
-import {
-  type BasemapId,
-  buildRasterBasemapStyle,
-  maptilerOutdoorStyleUrl,
-} from "@/lib/map/styles";
+import { type BasemapId } from "@/lib/map/styles";
+import { useBasemap } from "@/components/map-hub/hooks/useBasemap";
 import type { RankedPracticeArea } from "@/lib/heuristics/rankAreaTypes";
 import { formatVisibilityM } from "@/lib/weather/formatVisibility";
 import { yrNoHourlyTableUrlEn } from "@/lib/yrNoUrls";
@@ -125,8 +122,15 @@ export function MapHub() {
   /** Bumps on map `load` so effects can re-sync icons after the map instance exists. */
   const [mapEpoch, setMapEpoch] = useState(0);
   const [mapZoom, setMapZoom] = useState(5);
-  const [basemap, setBasemap] = useState<BasemapId>("hybrid");
-  const [reliefOpacity, setReliefOpacity] = useState(0.42);
+  const {
+    basemap,
+    setBasemap,
+    reliefOpacity,
+    setReliefOpacity,
+    mapStyle,
+    summary: basemapSummary,
+    hasMaptilerKey,
+  } = useBasemap();
   const [activeSport, setActiveSport] = useState<"kiteski" | "kitesurf">("kiteski");
   const {
     bundle,
@@ -233,15 +237,6 @@ export function MapHub() {
     setSelectedPracticeAreaId(r.areaId);
     setTerrainClick(null);
   }, []);
-
-  const mapStyle = useMemo(() => {
-    if (basemap === "maptiler_outdoor") {
-      const url = maptilerOutdoorStyleUrl();
-      if (url) return url;
-      return buildRasterBasemapStyle("hybrid", reliefOpacity);
-    }
-    return buildRasterBasemapStyle(basemap, reliefOpacity);
-  }, [basemap, reliefOpacity]);
 
   useFitMapToPracticeAreas({
     mapRef,
@@ -589,21 +584,6 @@ export function MapHub() {
     }
     void savePracticeArea(poly, undefined);
   }
-
-  const hasMaptilerKey = Boolean(
-    typeof process !== "undefined" && process.env.NEXT_PUBLIC_MAPTILER_API_KEY,
-  );
-
-  const basemapSummary = useMemo(() => {
-    const labels: Record<BasemapId, string> = {
-      hybrid: "Hybrid",
-      osm: "OSM",
-      topo: "Topo",
-      satellite: "Satellite",
-      maptiler_outdoor: "MapTiler Outdoor",
-    };
-    return labels[basemap] ?? basemap;
-  }, [basemap]);
 
   const windRankSummary = useMemo(() => {
     if (mapMode === "pickWind") {
@@ -1185,7 +1165,7 @@ export function MapHub() {
               shading and relief; <em>Satellite</em> shows tree cover visually.
             </p>
           </label>
-          {(basemap === "hybrid" || (basemap === "maptiler_outdoor" && !maptilerOutdoorStyleUrl())) && (
+          {(basemap === "hybrid" || (basemap === "maptiler_outdoor" && !hasMaptilerKey)) && (
             <label className="flex flex-col gap-1">
               <span className="text-xs font-medium text-app-fg-muted">Topo overlay strength</span>
               <input
