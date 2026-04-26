@@ -476,17 +476,6 @@ function WindRankSection({
       onToggle={() => toggleToolSection("windRank")}
     >
       <div className="flex flex-col gap-2">
-        <p className="text-[11px] leading-snug text-app-fg-muted">
-          Optimal wind is <strong>per practice area</strong> only. Open an area →{" "}
-          <strong>Edit area</strong> to draw direction on the map or type degrees. Areas without an
-          optimal get <strong>no direction penalty</strong> (unless you use saved wind sectors).
-        </p>
-        <p className="text-[11px] leading-snug text-app-fg-muted">
-          <strong>Multi-spot forecast</strong> (when enabled) fetches several grid-aligned points
-          inside each polygon with per-spot elevation for Met.no. Scores combine those samples:
-          conservative mode penalises using the lowest wind speed and the worst direction match; gust
-          penalty uses the strongest gust vs median speed.
-        </p>
         {mapMode === "pickWind" ? (
           <div className="space-y-2 rounded-2xl border border-app-border bg-gradient-to-b from-app-accent-soft to-app-surface p-3 shadow-inner shadow-app-fg/5">
             <p className="text-[10px] font-medium text-app-accent-hover">
@@ -537,10 +526,6 @@ function WindRankSection({
           = more forgiving; also scales the bonus inside saved wind sectors.
         </span>
       </label>
-      <p className="mt-2 text-[10px] leading-snug text-app-fg-subtle">
-        When a practice area is selected and has an optimal, a short <strong>downwind</strong> arrow
-        is shown from that area’s centre (inside the polygon).
-      </p>
       <label className="mt-1 flex flex-col gap-1">
         <span className="text-xs font-medium text-app-fg-muted">
           Saved-area sector half-width: {sectorHalfWidthDeg}°
@@ -558,28 +543,45 @@ function WindRankSection({
           bearing.
         </span>
       </label>
-      <p className="mt-2 text-[10px] leading-snug text-app-fg-subtle">
-        Min/max wind, ideal band, and score weights are in <strong>Forecast &amp; ranked areas</strong>{" "}
-        above. This section is for direction match width and drawing optimal wind on the map.
-      </p>
-      <div className="flex flex-wrap gap-2 text-[10px] text-app-fg-muted">
-        <span className="inline-flex items-center gap-1">
-          <span className="h-2 w-4 rounded-sm bg-[var(--app-rank-strong)]" />
-          strong
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <span className="h-2 w-4 rounded-sm bg-[var(--app-rank-ok)]" />
-          ok
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <span className="h-2 w-4 rounded-sm bg-[var(--app-rank-weak)]" />
-          weak
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <span className="h-2 w-4 rounded-sm bg-[var(--app-rank-poor)]" />
-          poor
-        </span>
-      </div>
+      <HelpDisclosure
+        title="How spots are scored"
+        storageKey="mapHub.helpScoringExpanded"
+      >
+        <p>
+          Optimal wind is <strong>per practice area</strong> only. Open an area →{" "}
+          <strong>Edit area</strong> to draw direction on the map or type degrees. Areas without an
+          optimal get <strong>no direction penalty</strong> (unless you use saved wind sectors).
+        </p>
+        <p className="mt-1.5">
+          <strong>Multi-spot forecast</strong> (when enabled) fetches several grid-aligned points
+          inside each polygon with per-spot elevation for Met.no. Scores combine those samples:
+          conservative mode penalises using the lowest wind speed and the worst direction match; gust
+          penalty uses the strongest gust vs median speed.
+        </p>
+        <p className="mt-1.5">
+          When a practice area is selected and has an optimal, a short <strong>downwind</strong>{" "}
+          arrow is shown from that area’s centre. Min/max wind, ideal band, and score weights live in{" "}
+          <strong>Forecast &amp; ranked areas</strong> above.
+        </p>
+        <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-app-fg-muted">
+          <span className="inline-flex items-center gap-1">
+            <span className="h-2 w-4 rounded-sm bg-[var(--app-rank-strong)]" />
+            strong
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="h-2 w-4 rounded-sm bg-[var(--app-rank-ok)]" />
+            ok
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="h-2 w-4 rounded-sm bg-[var(--app-rank-weak)]" />
+            weak
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="h-2 w-4 rounded-sm bg-[var(--app-rank-poor)]" />
+            poor
+          </span>
+        </div>
+      </HelpDisclosure>
     </CollapsibleSection>
   );
 }
