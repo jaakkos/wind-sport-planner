@@ -354,6 +354,11 @@ function ScoringPrefsForm({
           onChange={(v) => patchActiveSportRanking({ idealMaxMs: v })}
         />
       </div>
+      <p className="text-[10px] leading-snug text-app-fg-subtle">
+        {activeSport === "kitesurf"
+          ? "Reference (water): start at ~6 m/s, ideal 8–18 m/s, max ~25 m/s. Beginners aim 6–9 m/s; intermediates 7–13 m/s."
+          : "Reference (snow): start at ~3 m/s, ideal 5–11 m/s, max ~18 m/s. Snow needs less wind than water (denser air, low friction)."}
+      </p>
       <SliderField
         label={`Wind speed fit weight ×${sportPrefs.windFitScale.toFixed(2)}`}
         value={sportPrefs.windFitScale}

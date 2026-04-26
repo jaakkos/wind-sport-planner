@@ -2,9 +2,23 @@ import type { Sport } from "@/generated/prisma/client";
 
 export type WindBands = { minMs: number; maxMs: number; idealMin: number; idealMax: number };
 
+/**
+ * Per-sport wind-speed defaults targeting an intermediate rider. Each user can
+ * override these via `sportRankingPrefsSchema` (see `ranking/sportPrefs.ts`).
+ *
+ * Reference ranges, m/s (1 kt ~= 0.514 m/s):
+ * - Water (kitesurf): typically need ~6 m/s (12 kt) just to ride out, ideal
+ *   8-18 m/s (16-35 kt), upper edge ~25 m/s (50 kt).
+ * - Snow (kiteski / snowkite): denser cold air and low surface friction mean
+ *   ~3 m/s is enough to start, ideal 5-11 m/s, upper edge ~18 m/s.
+ *
+ * `idealMax` is intentionally below `maxMs`: above the ideal band the spot is
+ * still rideable but overpowered, so it scores in the marginal zone rather
+ * than zero.
+ */
 export const WIND_BANDS: Record<Sport, WindBands> = {
-  kiteski: { minMs: 2, maxMs: 18, idealMin: 4, idealMax: 12 },
-  kitesurf: { minMs: 3, maxMs: 25, idealMin: 6, idealMax: 16 },
+  kiteski: { minMs: 3, maxMs: 18, idealMin: 5, idealMax: 11 },
+  kitesurf: { minMs: 6, maxMs: 25, idealMin: 8, idealMax: 18 },
 };
 
 export function windFitScore(
