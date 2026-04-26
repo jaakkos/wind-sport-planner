@@ -12,8 +12,7 @@ import MapGL, {
   NavigationControl,
   Source,
 } from "react-map-gl/maplibre";
-import centroid from "@turf/centroid";
-import type { Feature, FeatureCollection, Polygon } from "geojson";
+import type { Feature, FeatureCollection } from "geojson";
 import { type SidebarTab } from "@/components/map-hub/constants";
 import { useSidebarTab } from "@/components/map-hub/hooks/useSidebarTab";
 import { useMapLayerToggles } from "@/components/map-hub/hooks/useMapLayerToggles";
@@ -50,28 +49,19 @@ import {
 import { type BasemapId } from "@/lib/map/styles";
 import { useBasemap } from "@/components/map-hub/hooks/useBasemap";
 import type { RankedPracticeArea } from "@/lib/heuristics/rankAreaTypes";
-import { formatVisibilityM } from "@/lib/weather/formatVisibility";
 import { yrNoHourlyTableUrlEn } from "@/lib/yrNoUrls";
-import {
-  cssRotateEastBaseToWindTo,
-  windToDegFromDirFrom,
-} from "@/lib/map/windArrowDisplay";
+import { cssRotateEastBaseToWindTo } from "@/lib/map/windArrowDisplay";
 import {
   ensureWindFieldArrowImage,
   WIND_FIELD_ARROW_IMAGE_ID,
 } from "@/lib/map/windFieldArrowIcon";
-import { clampArrowLengthInsidePolygon } from "@/lib/map/windArrowLength";
 import {
   floorToHourMs,
-  rankColor,
   toDatetimeLocalInput,
 } from "@/lib/map/mapHubHelpers";
 import {
   cardinalFromDeg,
-  windCompactSummary,
   windFromFromDownwindArrow,
-  windMultiPointSubtitle,
-  windToFromWindFrom,
 } from "@/lib/map/windFormat";
 import {
   areaFeatureId,
@@ -79,10 +69,16 @@ import {
   closePolygonCoordinates,
   haversineKm,
   kmToScreenPx,
-  MAX_TOTAL_WIND_FIELD_MARKERS,
   outerRingOpenCoords,
-  WIND_FIELD_MAX_ARROWS,
 } from "@/lib/map/polygons";
+import {
+  buildAreaNameLabels,
+  buildAreasColored,
+  buildWindFieldArrows,
+  buildWindLabels,
+  buildYrForecastPoints,
+  selectedAreaOptimalWindMarker,
+} from "@/lib/map/areaLayers";
 import {
   createPracticeArea,
   patchPracticeArea,
@@ -91,10 +87,6 @@ import {
   createExperience,
   deleteExperience,
 } from "@/lib/experiences/client";
-import {
-  windFieldSpatialProbePoints,
-  WIND_MAP_ARROW_MAX_SAMPLES_SETTING,
-} from "@/lib/heuristics/windSamplePoints";
 
 export function MapHub() {
   const { status } = useSession();
@@ -242,105 +234,21 @@ export function MapHub() {
     mapEpoch,
   });
 
-  const areasColored = useMemo(() => {
-    if (!bundle?.practiceAreas) return null;
-    const rankMap = new Map(ranked.map((r) => [r.areaId, r.score]));
-    const features: Feature[] = bundle.practiceAreas.features.map((f) => {
-      const props = (f.properties ?? {}) as Record<string, unknown>;
-      const id = String(f.id ?? props.id ?? "");
-      const score = rankMap.get(id) ?? 0;
-      const sel = id === selectedPracticeAreaId ? 1 : 0;
-      const isCommunity = props.isCommunity === 1 || props.isCommunity === true ? 1 : 0;
-      const hasMapSelection = selectedPracticeAreaId != null ? 1 : 0;
-      return {
-        ...f,
-        properties: {
-          ...props,
-          rankScore: score,
-          rankColor: rankColor(score),
-          selectedPractice: sel,
-          isCommunity,
-          hasMapSelection,
-        },
-      };
-    });
-    return { type: "FeatureCollection" as const, features };
-  }, [bundle, ranked, selectedPracticeAreaId]);
+  const areasColored = useMemo(
+    () => buildAreasColored(bundle?.practiceAreas, ranked, selectedPracticeAreaId),
+    [bundle, ranked, selectedPracticeAreaId],
+  );
 
-  const areaNameLabels = useMemo((): FeatureCollection | null => {
-    if (!bundle?.practiceAreas?.features.length) return null;
-    const features: Feature[] = [];
-    for (const f of bundle.practiceAreas.features) {
-      if (f.geometry?.type !== "Polygon") continue;
-      const props = (f.properties ?? {}) as {
-        id?: string;
-        name?: string;
-        isCommunity?: number | boolean;
-      };
-      const idStr = String(props.id ?? f.id ?? "");
-      const raw = typeof props.name === "string" ? props.name.trim() : "";
-      const shared =
-        props.isCommunity === 1 || props.isCommunity === true ? " · shared" : "";
-      const label = `${raw || `Area ${idStr.slice(0, 6)}`}${shared}`.slice(0, 120);
-      try {
-        const c = centroid(f as Feature<Polygon>);
-        features.push({
-          type: "Feature",
-          properties: { areaName: label },
-          geometry: c.geometry,
-        });
-      } catch {
-        /* invalid geometry */
-      }
-    }
-    return features.length ? { type: "FeatureCollection", features } : null;
-  }, [bundle]);
+  const areaNameLabels = useMemo(
+    () => buildAreaNameLabels(bundle?.practiceAreas),
+    [bundle],
+  );
 
   /** Wind field: GeoJSON points under area fill; SVG icon + map rotation in MapLibre symbol layer. */
-  const windFieldArrowsGeoJson = useMemo((): FeatureCollection => {
-    const features: Feature[] = [];
-    const polyById = new Map<string, GeoJSON.Polygon>();
-    if (bundle?.practiceAreas?.features.length) {
-      for (const f of bundle.practiceAreas.features) {
-        if (f.geometry?.type !== "Polygon") continue;
-        const geom = f.geometry;
-        const props = (f.properties ?? {}) as { id?: string };
-        const keys = new Set<string>();
-        const primary = areaFeatureId(f);
-        if (primary) keys.add(primary);
-        if (f.id != null && String(f.id) !== "") keys.add(String(f.id));
-        if (props.id != null && String(props.id) !== "") keys.add(String(props.id));
-        for (const k of keys) polyById.set(k, geom);
-      }
-    }
-    outer: for (const r of ranked) {
-      const w = r.wind;
-      if (w?.dirFromDeg == null || Number.isNaN(w.dirFromDeg)) continue;
-      const { lng, lat } = r.centroid;
-      const windTo = windToDegFromDirFrom(w.dirFromDeg);
-      const poly = polyById.get(r.areaId);
-      const origins = poly
-        ? windFieldSpatialProbePoints(
-            poly,
-            lng,
-            lat,
-            WIND_MAP_ARROW_MAX_SAMPLES_SETTING,
-            WIND_FIELD_MAX_ARROWS,
-          )
-        : [[lng, lat]];
-      let i = 0;
-      for (const [sx, sy] of origins) {
-        if (features.length >= MAX_TOTAL_WIND_FIELD_MARKERS) break outer;
-        features.push({
-          type: "Feature",
-          id: `wf-${r.areaId}-${i++}`,
-          properties: { windTo },
-          geometry: { type: "Point", coordinates: [sx, sy] },
-        });
-      }
-    }
-    return { type: "FeatureCollection", features };
-  }, [ranked, bundle]);
+  const windFieldArrowsGeoJson = useMemo(
+    () => buildWindFieldArrows(bundle?.practiceAreas, ranked),
+    [ranked, bundle],
+  );
 
   const windFieldFeatureCount = windFieldArrowsGeoJson.features.length;
   useEffect(() => {
@@ -350,66 +258,16 @@ export function MapHub() {
     ensureWindFieldArrowImage(map);
   }, [mapEpoch, windFieldFeatureCount, mapStyle]);
 
-  const windLabels = useMemo((): FeatureCollection => {
-    const features: Feature[] = [];
-    for (const r of ranked) {
-      const w = r.wind;
-      const { lng, lat } = r.centroid;
-      const line1 = w ? windCompactSummary(w) : "—";
-      const mpLine = windMultiPointSubtitle(w);
-      const visStr = formatVisibilityM(w?.visibilityM ?? null);
-      const lineVis = visStr !== "—" ? `vis ${visStr}` : "";
-      features.push({
-        type: "Feature",
-        properties: {
-          windText: [line1, mpLine, lineVis].filter(Boolean).join("\n"),
-        },
-        geometry: { type: "Point", coordinates: [lng, lat] },
-      });
-    }
-    return { type: "FeatureCollection", features };
-  }, [ranked]);
+  const windLabels = useMemo(() => buildWindLabels(ranked), [ranked]);
 
   /** Centroid markers: click opens Yr.no hourly (point) forecast for that coordinate. */
-  const yrForecastPoints = useMemo((): FeatureCollection => {
-    const features: Feature[] = [];
-    for (const r of ranked) {
-      const { lng, lat } = r.centroid;
-      features.push({
-        type: "Feature",
-        properties: { areaId: r.areaId },
-        geometry: { type: "Point", coordinates: [lng, lat] },
-      });
-    }
-    return { type: "FeatureCollection", features };
-  }, [ranked]);
+  const yrForecastPoints = useMemo(() => buildYrForecastPoints(ranked), [ranked]);
 
   /** Downwind preview at selected area centroid when that area has a saved optimal (CSS marker). */
-  const selectedOptimalWindMarker = useMemo((): {
-    lng: number;
-    lat: number;
-    windToDeg: number;
-    lenKm: number;
-  } | null => {
-    if (!bundle?.practiceAreas?.features.length || !selectedPracticeAreaId) return null;
-    const f = bundle.practiceAreas.features.find(
-      (x) => areaFeatureId(x) === selectedPracticeAreaId,
-    );
-    if (!f || f.geometry?.type !== "Polygon") return null;
-    const p = f.properties as { optimalWindFromDeg?: number | null };
-    const opt = p?.optimalWindFromDeg;
-    if (opt == null || typeof opt !== "number" || !Number.isFinite(opt)) return null;
-    try {
-      const c = centroid(f as Feature<Polygon>);
-      const [lng, lat] = c.geometry.coordinates;
-      const poly = f.geometry;
-      const windTo = windToFromWindFrom(opt);
-      const lenKm = clampArrowLengthInsidePolygon(poly, lng, lat, windTo, 14);
-      return { lng, lat, windToDeg: windTo, lenKm };
-    } catch {
-      return null;
-    }
-  }, [bundle, selectedPracticeAreaId]);
+  const selectedOptimalWindMarker = useMemo(
+    () => selectedAreaOptimalWindMarker(bundle?.practiceAreas, selectedPracticeAreaId),
+    [bundle, selectedPracticeAreaId],
+  );
 
   useEffect(() => {
     if (mapMode === "draw") {
