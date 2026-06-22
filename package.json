@@ -51,7 +51,7 @@
     "@playwright/test": "^1.61.0",
     "@tailwindcss/postcss": "^4",
     "@types/geojson": "^7946.0.16",
-    "@types/node": "^25",
+    "@types/node": "^26",
     "@types/nodemailer": "^8.0.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
