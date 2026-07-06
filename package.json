@@ -63,7 +63,7 @@
     "globals": "^17.7.0",
     "knip": "^6.23.0",
     "madge": "^8.0.0",
-    "prettier": "^3.9.1",
+    "prettier": "^3.9.4",
     "tailwindcss": "^4",
     "typescript": "^6",
     "typescript-eslint": "^8.62.0",
