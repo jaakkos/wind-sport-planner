@@ -16,7 +16,7 @@
 
 ## What this repo is
 
-Next.js app: magic-link auth (Auth.js), PostgreSQL + PostGIS (Prisma), MapLibre map, Open-Meteo weather, practice areas and session logging. Production is described in [`README.md`](README.md) and [`render.yaml`](render.yaml) (web service name **`fjelllift`**, Postgres **`fjelllift-frankfurt`**).
+Next.js app: magic-link auth (Auth.js), PostgreSQL + PostGIS (Prisma), MapLibre map, Open-Meteo weather, practice areas and session logging. Production is **Coolify** — [`README.md`](README.md) and [`docs/deploy-coolify.md`](docs/deploy-coolify.md) (app **`fjelllift`**, public **https://fjelllift.com**).
 
 ## Next.js
 
@@ -33,11 +33,11 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ## Environment & configuration
 
-- **Node.js 22.12+** (Prisma 7 and tooling; repo pins **22.14** — use **`.nvmrc`** with `nvm use` / `fnm use`, and match Render’s **`NODE_VERSION`** in `render.yaml`).
-- **`.npmrc`** sets `legacy-peer-deps=true` so **nodemailer 8** (security fixes) installs cleanly with **next-auth v5 beta**, which still peer-declares nodemailer 7. **`npm ci`** respects this file (CI and Render).
+- **Node.js 22.12+** (Prisma 7 and tooling; repo pins **22.14** — use **`.nvmrc`** with `nvm use` / `fnm use`, and match Coolify **`NODE_VERSION`** in [`docs/deploy-coolify.md`](docs/deploy-coolify.md)).
+- **`.npmrc`** sets `legacy-peer-deps=true` so **nodemailer 8** (security fixes) installs cleanly with **next-auth v5 beta**, which still peer-declares nodemailer 7. **`npm ci`** respects this file (CI and Coolify).
 - Copy **`.env.example`** → **`.env`** (and optionally **`.env.local`**). Never commit real secrets; keep them in env files or the host’s secret store.
 - **`AUTH_SECRET`**: long random string (see `.env.example`). **`AUTH_URL`**: canonical public URL with no trailing slash; wrong values break magic links and `new URL(...)` usage (see comments in `.env.example` and `src/auth.ts`).
-- **Email**: local dev uses **Mailpit** (Docker) via `EMAIL_SERVER_*` when **`RESEND_API_KEY`** is unset; production/Render uses **Resend** (`RESEND_API_KEY`, `RESEND_FROM`).
+- **Email**: local dev uses **Mailpit** (Docker) via `EMAIL_SERVER_*` when **`RESEND_API_KEY`** is unset; production (Coolify) uses **Resend** (`RESEND_API_KEY`, `RESEND_FROM`).
 - Optional: **`NEXT_PUBLIC_MAPTILER_API_KEY`** for MapTiler basemap, **`NEXT_PUBLIC_*`** legal contact vars on `/privacy`.
 
 ## Local services (Docker)
@@ -93,12 +93,12 @@ Imports use the **`@/*`** alias → `src/*` (see `tsconfig.json`).
 
 - Edit **`prisma/schema.prisma`**; create migrations with **`npm run db:dev`** (or equivalent `prisma migrate dev`). Commit migration SQL under **`prisma/migrations/`**.
 - Client output is **`src/generated/prisma`** (`generator output` in schema). **`postinstall`** runs **`prisma generate`**; **`npm run build`** also generates. Do not commit hand-edits inside `src/generated/prisma`.
-- Production applies migrations in Render **`preDeployCommand`** (`npx prisma migrate deploy` in `render.yaml`) — avoid workflows that only migrate locally.
+- Production applies migrations in Coolify **pre-deploy** (`npx prisma migrate deploy` — see [`docs/deploy-coolify.md`](docs/deploy-coolify.md)) — avoid workflows that only migrate locally.
 
 ## CI and deploy gate
 
 - **[`.github/workflows/ci.yml`](.github/workflows/ci.yml)** on push/PR to `main`/`master`: `npm ci` → Prisma migrate against service Postgres → lint → Vitest with coverage → production build → Playwright.
-- Render **`autoDeployTrigger: checksPass`** waits for this workflow before deploying — a red CI blocks production deploys.
+- Keep **CI green** before deploying `main` on Coolify ([`docs/deploy-coolify.md`](docs/deploy-coolify.md)).
 
 ## API, auth, and server boundaries
 
@@ -124,27 +124,15 @@ The codebase has been deliberately reshaped around a few patterns; keep new work
 - Map UI: **MapLibre** / **react-map-gl**, heavy UI in **`src/components/`** (e.g. map hub). Styles/helpers in **`src/lib/map/`**.
 - Weather: **`src/lib/weather/`** (router, Met.no, Open-Meteo). Keep provider boundaries clear when adding sources or debug flags.
 
-## Debugging production / Render deployments (use MCP)
+## Debugging production / Coolify deployments
 
-When a deploy fails, the app errors in prod, or you need build/runtime logs, **use the Render MCP** instead of guessing. Inspect tool schemas under the Render MCP server before calling tools (required parameters differ per tool).
+When a deploy fails or the app errors in prod:
 
-**Typical flow**
+1. **Coolify UI** (WireGuard) — `http://10.20.0.10:8000` → project **fjelllift** → deployment logs / runtime logs.
+2. **SSH** (via infra jump) — `docker logs` on the app container / `coolify-proxy` for Traefik/ACME.
+3. **API** — `COOLIFY_TOKEN` from 1Password `vamelivo-infra Coolify API token`; see vamelivo-infra `docs/runbooks/coolify.md`.
 
-1. **Workspace** — If needed, `list_workspaces` then `select_workspace` so subsequent calls target the right account.
-2. **Service** — `list_services` (or `get_service` if you already have the service id). The blueprint web service is named **`fjelllift`**.
-3. **Deploys** — `list_deploys` with `serviceId` to see recent deploys; `get_deploy` with `serviceId` + `deployId` for status, commit, and error detail.
-4. **Logs** — `list_logs` requires `resource` (the **service id** string). Use `type` filters such as **`build`** (failed builds), **`app`** (runtime), or **`request`** (HTTP). Narrow with `text`, `path`, `statusCode`, or time range (`startTime` / `endTime`, RFC3339). If `hasMore` is true, paginate with the returned `nextStartTime` / `nextEndTime`.
-
-**Also on Render**
-
-- **Metrics** — `get_metrics` for CPU/memory/time series when the issue looks like load or limits.
-- **Postgres** — `list_postgres_instances`, `get_postgres`, `query_render_postgres` when debugging DB connectivity or data in the managed instance (read carefully; avoid destructive SQL unless explicitly requested).
-
-**Environment**
-
-- `update_environment_variables` only when the user explicitly wants env changes on Render and the new values are agreed (document in PR/commit body, not in code comments).
-
-Do not paste Render API keys or tokens into source files, `AGENTS.md`, or commit messages. Local MCP config stays out of git (see `.gitignore`).
+Do not paste Coolify/API tokens or DB passwords into source files, `AGENTS.md`, or commit messages.
 
 ## Cursor Cloud specific instructions
 

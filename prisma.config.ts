@@ -1,8 +1,8 @@
 import "dotenv/config";
 import { defineConfig } from "prisma/config";
 
-// Render (and other hosts) often omit DATABASE_URL during `npm run build` even
-// though `prisma generate` never connects.  Migrations and the running app
+// Hosts (e.g. Coolify Nixpacks) often omit DATABASE_URL during `npm run build`
+// even though `prisma generate` never connects. Migrations and the running app
 // always use the real URL from the environment when it is set.
 const databaseUrl =
   process.env.DATABASE_URL ??

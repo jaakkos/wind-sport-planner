@@ -1,5 +1,5 @@
 # CI: lint, DB migrate, Vitest (with coverage), production build, Playwright E2E.
-# Production deploy: Render `autoDeployTrigger: checksPass` in render.yaml — waits for this workflow.
+# Production: Coolify (see docs/deploy-coolify.md) — keep CI green before deploying main.
 
 name: CI
 

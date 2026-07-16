@@ -6,12 +6,8 @@ import prisma from "@/lib/prisma";
 
 /**
  * Magic links and OAuth callbacks use AUTH_URL as the site origin.
- * Set AUTH_URL to your custom domain (e.g. https://fjelllift.com) on Render; RENDER_EXTERNAL_URL
- * stays https://….onrender.com, so we only fall back to it when AUTH_URL is unset.
+ * Production (Coolify): set AUTH_URL to https://fjelllift.com (no trailing slash).
  */
-if (!process.env.AUTH_URL?.trim() && process.env.RENDER_EXTERNAL_URL?.trim()) {
-  process.env.AUTH_URL = process.env.RENDER_EXTERNAL_URL.trim();
-}
 
 const resendKey = process.env.RESEND_API_KEY?.trim();
 const emailFrom =

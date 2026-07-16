@@ -128,8 +128,8 @@ export default function PrivacyPage() {
             <p>Depending on configuration, data may be processed by:</p>
             <ul className="list-inside list-disc space-y-1 text-zinc-700">
               <li>
-                <strong>Hosting &amp; database</strong> (e.g. Render, Vercel, Fly, AWS, etc.) storing
-                the application and PostgreSQL.
+                <strong>Hosting &amp; database</strong> (e.g. Coolify / VPS, Vercel, Fly, AWS, etc.)
+                storing the application and PostgreSQL.
               </li>
               <li>
                 <strong>Email delivery</strong> (SMTP / transactional email provider) for magic
