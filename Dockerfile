@@ -37,8 +37,7 @@ RUN apt-get update -qq && apt-get install -y --no-install-recommends openssl ca-
   && rm -rf /var/lib/apt/lists/* \
   && addgroup --system --gid 1001 nodejs \
   && adduser --system --uid 1001 nextjs \
-  && npm install -g prisma@7.8.0 \
-  && npm install --omit=dev dotenv@16
+  && npm install --omit=dev prisma@7.8.0 dotenv@16
 
 # Standalone server + static assets
 COPY --from=builder /app/public ./public

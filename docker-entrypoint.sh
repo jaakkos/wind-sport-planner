@@ -2,6 +2,6 @@
 set -eu
 # Expand/contract migrations only — no automatic migrate down on SHA rollback.
 if [ -n "${DATABASE_URL:-}" ]; then
-  prisma migrate deploy
+  ./node_modules/.bin/prisma migrate deploy
 fi
 exec node server.js
