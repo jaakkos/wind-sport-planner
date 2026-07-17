@@ -26,7 +26,7 @@ env:
 jobs:
   test:
     name: Lint, test & build
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, vamelivo]
     timeout-minutes: 25
 
     services:

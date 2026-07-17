@@ -24,7 +24,7 @@ permissions:
 jobs:
   enable-auto-merge:
     name: Queue merge when checks pass
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, vamelivo]
     if: github.event.pull_request.user.login == 'dependabot[bot]'
     steps:
       - name: Dependabot metadata
