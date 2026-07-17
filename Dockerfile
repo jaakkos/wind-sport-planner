@@ -7,6 +7,11 @@ WORKDIR /app
 RUN apt-get update -qq && apt-get install -y --no-install-recommends openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json .npmrc ./
+# postinstall runs ensure-node-version + prisma generate
+COPY scripts ./scripts
+COPY prisma ./prisma
+COPY prisma.config.ts ./
+ENV DATABASE_URL=postgresql://build:build@127.0.0.1:5432/build?schema=public
 RUN npm ci
 
 FROM node:22.14.0-bookworm-slim AS builder
