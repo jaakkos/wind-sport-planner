@@ -1,29 +1,31 @@
-# Production deploy — Coolify
+# Production deploy — Coolify + GHCR (Phase 8 hybrid)
 
-Production runs on **Coolify** (Nixpacks) against Coolify-managed **PostGIS**. Public site: **https://fjelllift.com**.
+Production runs on **Coolify** against Coolify-managed **PostGIS**. Public site: **https://fjelllift.com**.
 
-Infra/ops details (host, WireGuard, DNSimple, 1Password refs) live in the **vamelivo-infra** repo. This file is the app-side contract.
+Infra/ops details (host, WireGuard, DNSimple, 1Password, cutover/rollback) live in **vamelivo-infra** (`docs/runbooks/deployment.md`, `docs/runbooks/coolify.md`). This file is the app-side contract.
 
-## Resources (Coolify)
+## Image contract
 
-| Resource | Notes |
-|----------|--------|
-| App | `fjelllift` — Git `git@github.com:jaakkos/wind-sport-planner.git`, branch `main` |
-| Database | PostGIS (`postgis/postgis:16-3.4`), db `wind_sport`, user `wind` |
-| Domains | `https://fjelllift.com`, `https://www.fjelllift.com` (+ optional sslip for debugging) |
+| | |
+|--|--|
+| Image | `ghcr.io/jaakkos/wind-sport-planner` |
+| Immutable tag | full git SHA (`${{ github.sha }}`) |
+| Moving tag | `main` (convenience only — **not** for rollback) |
+| Dockerfile | repo root; Next.js `output: "standalone"` |
+| Entrypoint | `prisma migrate deploy` then `node server.js` |
 
-## Build / runtime commands
+CI on green `main` **publishes** the SHA tag (self-hosted + BuildKit). It does **not** call Coolify.
 
-Coolify (Nixpacks) should use:
+## Coolify app settings (Docker Image)
 
-| Step | Command |
-|------|---------|
-| Install | `npm ci` |
-| Build | `npm run build` |
-| Pre-deploy | `npx prisma migrate deploy` |
-| Start | `npm start` |
+| Setting | Value |
+|---------|--------|
+| Source | Docker Image (not Nixpacks / not Git build) |
+| Image | `ghcr.io/jaakkos/wind-sport-planner:<git-sha>` |
+| Registry | GHCR (classic PAT / Coolify GHCR creds — see vamelivo-infra) |
 | Health | `GET /` |
-| Node | `22.14.0` (`NODE_VERSION` / Nixpacks node) |
+| Ports | `3000` |
+| Pre-deploy | optional (entrypoint already migrates); if set, `prisma migrate deploy` |
 
 ## Required env (Coolify)
 
@@ -35,17 +37,22 @@ Coolify (Nixpacks) should use:
 | `AUTH_URL` | `https://fjelllift.com` (no trailing slash) |
 | `RESEND_API_KEY` | Magic-link email |
 | `RESEND_FROM` | e.g. `Fjell Lift <noreply@fjelllift.com>` |
-| `NODE_VERSION` | `22.14.0` |
 
 Optional: `NEXT_PUBLIC_MAPTILER_API_KEY`, legal `NEXT_PUBLIC_*` vars (see `.env.example`).
 
-## Deploy flow
+## Deploy flow (hybrid)
 
 1. Push (or merge) to **`main`**.
-2. CI ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) must be green before you treat a commit as shippable.
-3. Coolify pulls `main` and builds (UI **Deploy**, or API `POST …/applications/<uuid>/start`).
+2. CI must be green; **Publish GHCR image** job pushes `:sha` and `:main`.
+3. **Gated cutover** (trusted admin / WireGuard): set Coolify image tag to that SHA → redeploy. See vamelivo-infra `docs/runbooks/deployment.md`.
 
-Wire a Coolify **deploy webhook** to GitHub if you want auto-deploy after push; prefer gating on green CI (Coolify UI / GitHub status) so a red `CI` does not ship.
+Do not auto-trigger Coolify on every push until a rollback drill is recorded and policy is changed deliberately.
+
+## Migrations / rollback
+
+- Migrations run **forward** at container start (`prisma migrate deploy`).
+- Prefer **expand/contract** migrations so an older SHA can still boot after a newer migrate.
+- Rollback = redeploy previous **SHA** tag in Coolify — not `main`, and not migrate down.
 
 ## Local vs production
 
@@ -54,3 +61,4 @@ Wire a Coolify **deploy webhook** to GitHub if you want auto-deploy after push; 
 | DB | `docker compose` PostGIS | Coolify PostGIS |
 | Email | Mailpit (`EMAIL_SERVER_*`) | Resend |
 | URL | `AUTH_URL=http://localhost:3000` | `AUTH_URL=https://fjelllift.com` |
+| App | `npm run dev` | GHCR image via Coolify |

@@ -1,0 +1,17 @@
+node_modules
+.next
+.git
+.github
+coverage
+playwright-report
+test-results
+blob-report
+e2e
+docs
+*.md
+.env
+.env.*
+!.env.example
+.DS_Store
+.cursor
+src/generated/prisma

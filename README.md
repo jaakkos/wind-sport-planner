@@ -137,7 +137,7 @@ Workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on **push**
 
 Artifacts: **coverage** (HTML under `coverage/`), and **playwright-report** on E2E failure.
 
-**Deploy:** after green CI on `main`, trigger Coolify (UI or API). Details: [`docs/deploy-coolify.md`](./docs/deploy-coolify.md). Remove any leftover GitHub secret **`RENDER_DEPLOY_HOOK_URL`** if present — it is unused.
+**Deploy:** after green CI on `main`, trigger Coolify (UI or API). Details: [`docs/deploy-coolify.md`](./docs/deploy-coolify.md).
 
 ## Licence
 
