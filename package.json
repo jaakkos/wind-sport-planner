@@ -30,7 +30,7 @@
     "@auth/prisma-adapter": "^2.11.3",
     "@prisma/adapter-pg": "^7.9.0",
     "@prisma/client": "^7.9.1",
-    "@turf/bbox": "^7.3.5",
+    "@turf/bbox": "^7.4.0",
     "@turf/boolean-point-in-polygon": "^7.3.5",
     "@turf/centroid": "^7.3.5",
     "@turf/helpers": "^7.4.0",
