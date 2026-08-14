@@ -18,9 +18,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Dedicated host port: self-hosted runners share Docker with other vamelivo jobs;
-  # binding 5432 collides (`port is already allocated`).
-  DATABASE_URL: postgresql://wind:wind@127.0.0.1:15432/wind_sport
   AUTH_SECRET: ci-auth-secret-must-be-at-least-32-chars-long
   AUTH_TRUST_HOST: "true"
   AUTH_URL: http://127.0.0.1:3000
@@ -39,7 +36,9 @@ jobs:
           POSTGRES_PASSWORD: wind
           POSTGRES_DB: wind_sport
         ports:
-          - 127.0.0.1:15432:5432
+          # Ephemeral host port. Do not bind 5432:5432 — build VM 127.0.0.1:5432 is
+          # tervemo-agent-pg (see vamelivo-infra docs/runbooks/github-runner.md).
+          - 5432/tcp
         options: >-
           --health-cmd "pg_isready -U wind -d wind_sport"
           --health-interval 5s
@@ -49,6 +48,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+
+      - name: Map CI database URL
+        run: echo "DATABASE_URL=postgresql://wind:wind@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/wind_sport" >> "$GITHUB_ENV"
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
