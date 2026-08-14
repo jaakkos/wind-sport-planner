@@ -18,7 +18,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  DATABASE_URL: postgresql://wind:wind@localhost:5432/wind_sport
+  # Dedicated host port: self-hosted runners share Docker with other vamelivo jobs;
+  # binding 5432 collides (`port is already allocated`).
+  DATABASE_URL: postgresql://wind:wind@127.0.0.1:15432/wind_sport
   AUTH_SECRET: ci-auth-secret-must-be-at-least-32-chars-long
   AUTH_TRUST_HOST: "true"
   AUTH_URL: http://127.0.0.1:3000
@@ -37,7 +39,7 @@ jobs:
           POSTGRES_PASSWORD: wind
           POSTGRES_DB: wind_sport
         ports:
-          - 5432:5432
+          - 127.0.0.1:15432:5432
         options: >-
           --health-cmd "pg_isready -U wind -d wind_sport"
           --health-interval 5s
