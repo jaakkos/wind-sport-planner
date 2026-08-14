@@ -72,7 +72,7 @@ Production is **Coolify** (not Render). See [`docs/deploy-coolify.md`](./docs/de
 Summary:
 
 - Git: `main` of this repo → Coolify app **fjelllift**
-- PostGIS via Coolify; **`DATABASE_URL`**, **`AUTH_SECRET`**, **`AUTH_URL=https://fjelllift.com`**, Resend env vars
+- PostGIS via Coolify; **`DATABASE_URL`**, **`AUTH_SECRET`**, **`AUTH_URL=https://fjelllift.com`**, **`EMAIL_SERVER_*`** / **`EMAIL_FROM`**
 - Build: `npm ci` → `npm run build`; pre-deploy: `npx prisma migrate deploy`; start: `npm start`
 - Public URL: **https://fjelllift.com**
 

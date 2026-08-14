@@ -41,7 +41,7 @@ CI on green `main` **publishes** the SHA tag (self-hosted + BuildKit). It does *
 | `EMAIL_SERVER_PASSWORD` | SMTP password (1Password `vamelivo-infra fjelllift SMTP`) |
 | `EMAIL_FROM` | `Fjell Lift <noreply@fjelllift.com>` |
 
-Do **not** set `RESEND_API_KEY` in production: Auth.js uses Resend whenever that key is present. Soak rollback: restore `RESEND_*` and redeploy (see vamelivo-infra `docs/runbooks/transactional-email.md`).
+Do **not** set `RESEND_API_KEY` in production: Auth.js uses Resend whenever that key is present. Production mail is platform SMTP.
 
 Optional: `NEXT_PUBLIC_MAPTILER_API_KEY`, legal `NEXT_PUBLIC_*` vars (see `.env.example`).
 
