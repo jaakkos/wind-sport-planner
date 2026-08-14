@@ -35,8 +35,13 @@ CI on green `main` **publishes** the SHA tag (self-hosted + BuildKit). It does *
 | `AUTH_SECRET` | Auth.js |
 | `AUTH_TRUST_HOST` | `true` |
 | `AUTH_URL` | `https://fjelllift.com` (no trailing slash) |
-| `RESEND_API_KEY` | Magic-link email |
-| `RESEND_FROM` | e.g. `Fjell Lift <noreply@fjelllift.com>` |
+| `EMAIL_SERVER_HOST` | Platform SMTP (`172.16.1.6` on Coolify net — postfix is IPv4-only; Docker DNS AAAA-first) |
+| `EMAIL_SERVER_PORT` | `587` |
+| `EMAIL_SERVER_USER` | `noreply@fjelllift.com` |
+| `EMAIL_SERVER_PASSWORD` | SMTP password (1Password `vamelivo-infra fjelllift SMTP`) |
+| `EMAIL_FROM` | `Fjell Lift <noreply@fjelllift.com>` |
+
+Do **not** set `RESEND_API_KEY` in production: Auth.js uses Resend whenever that key is present. Soak rollback: restore `RESEND_*` and redeploy (see vamelivo-infra `docs/runbooks/transactional-email.md`).
 
 Optional: `NEXT_PUBLIC_MAPTILER_API_KEY`, legal `NEXT_PUBLIC_*` vars (see `.env.example`).
 
@@ -59,6 +64,6 @@ Do not auto-trigger Coolify on every push until a rollback drill is recorded and
 | | Local | Production |
 |--|--------|------------|
 | DB | `docker compose` PostGIS | Coolify PostGIS |
-| Email | Mailpit (`EMAIL_SERVER_*`) | Resend |
+| Email | Mailpit (`EMAIL_SERVER_*`) | Platform SMTP (`EMAIL_SERVER_*` / `EMAIL_FROM`) |
 | URL | `AUTH_URL=http://localhost:3000` | `AUTH_URL=https://fjelllift.com` |
 | App | `npm run dev` | GHCR image via Coolify |
