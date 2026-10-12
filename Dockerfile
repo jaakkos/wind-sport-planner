@@ -2,7 +2,7 @@
 # Build: docker buildx build --builder vamelivo -t ghcr.io/jaakkos/wind-sport-planner:<sha> .
 # Runtime: DATABASE_URL + Auth/Resend env; entrypoint runs prisma migrate then Next standalone.
 
-FROM node:22.14.0-bookworm-slim AS deps
+FROM node:26.11.1-bookworm-slim AS deps
 WORKDIR /app
 RUN apt-get update -qq && apt-get install -y --no-install-recommends openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
@@ -14,7 +14,7 @@ COPY prisma.config.ts ./
 ENV DATABASE_URL=postgresql://build:build@127.0.0.1:5432/build?schema=public
 RUN npm ci
 
-FROM node:22.14.0-bookworm-slim AS builder
+FROM node:26.11.1-bookworm-slim AS builder
 WORKDIR /app
 RUN apt-get update -qq && apt-get install -y --no-install-recommends openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
@@ -25,7 +25,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV DATABASE_URL=postgresql://build:build@127.0.0.1:5432/build?schema=public
 RUN npm run build
 
-FROM node:22.14.0-bookworm-slim AS runner
+FROM node:26.11.1-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
