@@ -25,7 +25,7 @@ env:
 jobs:
   test:
     name: Lint, test & build
-    runs-on: [self-hosted, linux, vamelivo]
+    runs-on: vamelivo-k3s-ci-wind-sport-planner
     timeout-minutes: 25
 
     services:
